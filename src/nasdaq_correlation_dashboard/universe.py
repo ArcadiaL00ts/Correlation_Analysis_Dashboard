@@ -3,12 +3,13 @@ from __future__ import annotations
 from dataclasses import dataclass
 from datetime import UTC, datetime, timedelta
 from io import BytesIO, StringIO
+from pathlib import Path
 from typing import Any
 
 import pandas as pd
 import requests
 
-from .settings import DashboardConfig
+from .settings import DashboardConfig, load_config
 
 
 USER_AGENT = (
@@ -123,6 +124,22 @@ def resolve_universe(config: DashboardConfig) -> UniverseSelection:
 def write_universe(universe: pd.DataFrame, destination) -> None:
     destination.parent.mkdir(parents=True, exist_ok=True)
     universe.to_csv(destination, index=False)
+
+
+def refresh_universe(config_path: str | Path, top_n: int = 50) -> dict[str, Any]:
+    """Preview the currently resolved universe without writing any artifacts.
+
+    Returns the top ``top_n`` resolved tickers plus the provenance fields that
+    ``scripts/refresh_universe.py`` prints.
+    """
+
+    selection = resolve_universe(load_config(config_path))
+    return {
+        "proposed_tickers": selection.universe.head(top_n)["ticker"].tolist(),
+        "snapshot_date": selection.metadata["official_source"]["trade_date"],
+        "ranking_source": selection.metadata["ranking"]["source_type"],
+        "fallback_used": selection.metadata["ranking"]["fallback_used"],
+    }
 
 
 def _fetch_official_members(

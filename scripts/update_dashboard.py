@@ -10,6 +10,7 @@ SRC_ROOT = PROJECT_ROOT / "src"
 if str(SRC_ROOT) not in sys.path:
     sys.path.insert(0, str(SRC_ROOT))
 
+from nasdaq_correlation_dashboard.cli import resolve_history_period as _resolve_period
 from nasdaq_correlation_dashboard.correlation import build_artifacts
 from nasdaq_correlation_dashboard.excel_export import export_workbook
 from nasdaq_correlation_dashboard.pairs_cointegration import (
@@ -25,9 +26,6 @@ from nasdaq_correlation_dashboard.sources import (
     write_metadata,
 )
 from nasdaq_correlation_dashboard.universe import resolve_universe, write_universe
-
-
-DEFAULT_HISTORY_CHOICES = ("6mo", "1y", "2y", "3y", "5y", "10y", "max")
 
 
 def snapshot_previous_run(paths: dict[str, Path]) -> None:
@@ -66,67 +64,23 @@ def parse_args() -> argparse.Namespace:
 
 
 def resolve_history_period(args: argparse.Namespace, config) -> str:
-    configured = str(config.history["period"])
-    prompt_choices = config.history.get("prompt_choices", list(DEFAULT_HISTORY_CHOICES))
-    allowed = [str(choice).strip() for choice in prompt_choices if str(choice).strip()]
-    if not allowed:
-        allowed = list(DEFAULT_HISTORY_CHOICES)
-
-    if args.history_period:
-        chosen = args.history_period.strip()
-    elif sys.stdin.isatty():
-        choice_text = ", ".join(allowed)
-        try:
-            chosen = (
-                input(
-                    f"Select price-history horizon for this refresh [{choice_text}] "
-                    f"(default: {configured}): "
-                ).strip()
-                or configured
-            )
-        except EOFError:
-            chosen = configured
-    else:
-        chosen = configured
-
-    if chosen not in allowed:
-        raise SystemExit(
-            f"Unsupported history horizon '{chosen}'. Allowed values: {', '.join(allowed)}."
-        )
-
+    chosen = _resolve_period(
+        args.history_period,
+        configured=str(config.history["period"]),
+        choices=config.history.get("prompt_choices"),
+        label="price-history horizon",
+    )
     config.payload["history"]["period"] = chosen
     return chosen
 
 
 def resolve_pairs_history_period(args: argparse.Namespace, config) -> str:
-    configured = str(config.pairs_trading.get("history_period", config.history["period"]))
-    prompt_choices = config.pairs_trading.get("prompt_choices", list(DEFAULT_HISTORY_CHOICES))
-    allowed = [str(choice).strip() for choice in prompt_choices if str(choice).strip()]
-    if not allowed:
-        allowed = list(DEFAULT_HISTORY_CHOICES)
-
-    if args.pairs_history_period:
-        chosen = args.pairs_history_period.strip()
-    elif sys.stdin.isatty():
-        choice_text = ", ".join(allowed)
-        try:
-            chosen = (
-                input(
-                    f"Select cointegration analysis window [{choice_text}] "
-                    f"(default: {configured}): "
-                ).strip()
-                or configured
-            )
-        except EOFError:
-            chosen = configured
-    else:
-        chosen = configured
-
-    if chosen not in allowed:
-        raise SystemExit(
-            f"Unsupported cointegration analysis window '{chosen}'. Allowed values: {', '.join(allowed)}."
-        )
-
+    chosen = _resolve_period(
+        args.pairs_history_period,
+        configured=str(config.pairs_trading.get("history_period", config.history["period"])),
+        choices=config.pairs_trading.get("prompt_choices"),
+        label="cointegration analysis window",
+    )
     config.payload["pairs_trading"]["history_period"] = chosen
     return chosen
 

@@ -8,3 +8,5 @@ exports/
 *.pyc
 *.pptx
 .claude/settings.local.json
+# Junction to .claude/skills for Codex compatibility (canonical copy is tracked there)
+/skills

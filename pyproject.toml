@@ -1,0 +1,22 @@
+[build-system]
+requires = ["setuptools>=68"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "nasdaq-correlation-dashboard"
+version = "0.1.0"
+description = "Correlation and cointegration dashboard for the top-50 NASDAQ-100 constituents."
+requires-python = ">=3.11"
+dependencies = [
+    "pandas>=2.2.0,<3.0",
+    "numpy>=1.26.0,<2.0",
+    "plotly>=5.24.0",
+    "streamlit>=1.40.0",
+    "yfinance>=0.2.54",
+    "openpyxl>=3.1.5",
+    "requests>=2.32.0",
+    "statsmodels>=0.14.0",
+]
+
+[tool.setuptools.packages.find]
+where = ["src"]

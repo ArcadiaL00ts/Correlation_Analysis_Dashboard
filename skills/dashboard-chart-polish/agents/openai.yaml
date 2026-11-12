@@ -1,5 +1,0 @@
-version: 1
-interface:
-  display_name: Dashboard Chart Polish
-  short_description: Fix clipped charts, improve readability, and maintain the Heatmap price-action panel.
-  default_prompt: Polish the NASDAQ correlation dashboard charts by fixing clipped dates or axis titles, normalizing section spacing, brightening helper text, and preserving the Heatmap price-action panel with yfinance OHLC fallback to local price artifacts.

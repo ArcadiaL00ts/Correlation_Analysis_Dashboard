@@ -85,19 +85,6 @@ Build or update a research-grade correlation dashboard for the top 50 stocks in 
 - If Python, Streamlit, or package dependencies are missing, state that clearly and document the setup gap in `codex.md`.
 - If a new failure mode appears repeatedly, update the troubleshooting skill instead of burying the fix in one-off notes.
 
-## Advanced Analytics
-
-When configured, the pipeline should also produce:
-
-- **Eigenvalue decomposition** of the correlation matrix with Marchenko-Pastur threshold for random matrix comparison.
-- **PCA factor loadings** (top N components) with explained variance ratios and a PC1 vs PC2 biplot colored by sector.
-- **Rolling pairwise correlations** for the top correlated and most anti-correlated pairs across multiple windows.
-- **Regime detection** via k-means clustering on rolling first-PC volatility (low-vol, normal, high-vol regimes).
-- **Correlation stability** measured by Frobenius norm distance between consecutive rolling correlation matrices.
-- **Absorption ratio** — rolling fraction of total variance explained by top eigenvalues (systemic risk indicator).
-
-Analytics modules: `analytics.py` for computations, `clustering.py` for hierarchical/sector ordering, `visualizations.py` for Plotly figure builders.
-
 ## Required Deliverables
 
 - Updated Python source files
@@ -114,7 +101,6 @@ Analytics modules: `analytics.py` for computations, `clustering.py` for hierarch
   - Excel workbook
   - cointegration csv/json artifacts
   - pairs cointegration workbook
-  - analytics data (PCA loadings, eigenvalues, regime labels)
   - dashboard app view
 - Short summary of assumptions and unresolved risks
 

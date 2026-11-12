@@ -1,0 +1,5 @@
+version: 1
+interface:
+  display_name: NASDAQ Correlation Ops
+  short_description: Refresh and maintain the NASDAQ-100 top-50 correlation research dashboard.
+  default_prompt: Refresh the NASDAQ-100 top-50 correlation dashboard, resolve the official membership, apply the configured ranking fallbacks with provenance, export the workbook, and update codex.md with any troubleshooting notes.

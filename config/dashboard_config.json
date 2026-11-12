@@ -1,0 +1,127 @@
+{
+  "project_name": "NASDAQ-100 Top-50 Correlation Dashboard",
+  "universe_policy": {
+    "index_symbol": "NDX",
+    "index_name": "NASDAQ-100",
+    "universe_size": 50,
+    "selection_mode": "latest_weight_rank",
+    "official_trade_date_offset_days": 1,
+    "official_trade_date_lookback_days": 7,
+    "official_source": {
+      "type": "nasdaq_weighting_data",
+      "weighting_page_url": "https://indexes.nasdaq.com/Index/Weighting/NDX",
+      "weighting_data_url": "https://indexes.nasdaq.com/Index/WeightingData",
+      "export_url_template": "https://indexes.nasdaq.com/Index/ExportWeightings/NDX?tradeDate={trade_date}&timeOfDay=SOD",
+      "overview_url": "https://indexes.nasdaq.com/Index/Overview/NDX",
+      "fact_sheet_url": "https://indexes.nasdaq.com/docs/FS_NDX.pdf"
+    },
+    "ranking_sources": [
+      {
+        "type": "qqqm_holdings_download",
+        "label": "QQQM holdings export",
+        "holdings_page_url": "https://www.invesco.com/us/financial-products/etfs/holdings?audienceType=Investor&ticker=QQQM",
+        "download_url": "https://www.invesco.com/us/financial-products/etfs/holdings/main/holdings/0?action=download&audienceType=Investor&basket=false&ticker=QQQM",
+        "product_detail_url": "https://www.invesco.com/us/financial-products/etfs/product-detail?audienceType=Investor&ticker=QQQM",
+        "fact_sheet_url": "https://www.invesco.com/content/dam/invesco/us/en/product-documents/etf/fact-sheet/qqqm-invesco-nasdaq-100-etf-fact-sheet.pdf"
+      },
+      {
+        "type": "yfinance_market_cap",
+        "label": "Yahoo Finance market cap ranking"
+      }
+    ]
+  },
+  "history": {
+    "period": "2y",
+    "prompt_choices": [
+      "6mo",
+      "1y",
+      "2y",
+      "3y",
+      "5y",
+      "10y",
+      "max"
+    ],
+    "interval": "1d",
+    "return_method": "log",
+    "correlation_method": "pearson"
+  },
+  "validation": {
+    "minimum_rows": 252,
+    "maximum_missing_ratio": 0.05,
+    "minimum_ranked_constituents": 50
+  },
+  "analytics": {
+    "rolling_windows": [
+      20,
+      60,
+      120
+    ],
+    "pair_table_limit": 12
+  },
+  "pairs_trading": {
+    "history_period": "1y",
+    "prompt_choices": [
+      "6mo",
+      "1y",
+      "2y",
+      "3y",
+      "5y",
+      "10y",
+      "max"
+    ],
+    "cointegration_p_threshold": 0.05,
+    "adf_stat_threshold": -2.86,
+    "minimum_rows": 252,
+    "rolling_z_window": 60,
+    "top_table_limit": 10,
+    "spread_export_limit": 10
+  },
+  "price_source": {
+    "provider": "yfinance",
+    "provider_priority": [
+      "yfinance",
+      "csv_directory"
+    ],
+    "fallback_provider": "csv_directory",
+    "price_field": "Adj Close",
+    "csv_directory": "data/manual_prices"
+  },
+  "paths": {
+    "universe_csv": "data/processed/latest_universe.csv",
+    "previous_universe_csv": "data/processed/previous_universe.csv",
+    "raw_prices_csv": "data/processed/latest_prices.csv",
+    "returns_csv": "data/processed/latest_returns.csv",
+    "correlation_csv": "data/processed/latest_correlation.csv",
+    "previous_correlation_csv": "data/processed/previous_correlation.csv",
+    "metadata_json": "data/processed/latest_metadata.json",
+    "previous_metadata_json": "data/processed/previous_metadata.json",
+    "excel_workbook": "exports/nasdaq_top50_correlation_dashboard.xlsx",
+    "pairs_all_csv": "data/processed/latest_pairs_cointegration_all.csv",
+    "pairs_qualified_csv": "data/processed/latest_pairs_cointegration_qualified.csv",
+    "pairs_spreads_csv": "data/processed/latest_pairs_cointegration_spreads.csv",
+    "pairs_metadata_json": "data/processed/latest_pairs_cointegration_metadata.json",
+    "pairs_workbook": "exports/pairs_cointegration_analysis.xlsx"
+  },
+  "visuals": {
+    "page_title": "NASDAQ-100 Top-50 Correlation Research",
+    "heatmap_min_color": "#7D3A4A",
+    "heatmap_mid_color": "#DCE7F6",
+    "heatmap_max_color": "#1C8BC4",
+    "background_start": "#071222",
+    "background_end": "#152B47",
+    "panel_border": "rgba(122,157,205,0.34)",
+    "accent_cyan": "#58C8FF",
+    "accent_amber": "#7BA9FF",
+    "success_color": "#22C55E",
+    "danger_color": "#FB7185",
+    "panel_bg_rgba": "rgba(10, 22, 40, 0.78)",
+    "hover_glow_rgba": "rgba(88, 200, 255, 0.30)",
+    "ascii_opacity": 0.15,
+    "ascii_density": 24,
+    "hero_font": "Bebas Neue",
+    "ui_font": "Sora",
+    "mono_font": "JetBrains Mono",
+    "text_primary": "#EAF2FF",
+    "text_muted": "#A4B8D7"
+  }
+}

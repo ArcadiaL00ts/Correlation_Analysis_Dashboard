@@ -1,0 +1,4 @@
+interface:
+  display_name: "Correlation Delta Tracking"
+  short_description: "Track prior-run correlation shifts"
+  default_prompt: "Use $correlation-delta-tracking to preserve prior-run correlation snapshots and surface the biggest pairwise changes in the dashboard."

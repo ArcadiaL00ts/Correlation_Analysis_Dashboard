@@ -1,0 +1,8 @@
+Fund Ticker,Security Identifier,Holding Ticker,Shares/Par Value,MarketValue,Weight,Name,Class of Shares,Sector,Date
+TAN,336433107,FSLR,"1,234,567","243,210,000.00",9.09,First Solar Inc,Common Stock,Information Technology,11/11/2026
+TAN,M4R00J107,ENLT,"2,000,000","120,000,000.00",4.51,Enlight Renewable Energy Ltd,Common Stock,Utilities,11/11/2026
+TAN,G7483H107,RNW,"9,000,000","60,000,000.00",2.25,ReNew Energy Global PLC,Common Stock,Utilities,11/11/2026
+TAN,Y7T08J104,6244,"500,000","20,000,000.00",0.75,Motech Industries Inc,Common Stock,Information Technology,11/11/2026
+TAN,23703Q203,,"800,000","40,000,000.00",1.50,Daqo New Energy Corp ADR,ADR,Information Technology,11/11/2026
+TAN,X9U112345,USD,"5,000,000","5,000,000.00",0.19,US Dollar,Cash,Cash,11/11/2026
+TAN,825252406,AGPXX,"3,000,000","3,000,000.00",0.11,Invesco Government & Agency Portfolio,Money Market,Cash,11/11/2026

@@ -61,3 +61,15 @@ override any symbol with `--ticker-map "LOCAL=YAHOO,..."`.
 
 Handled automatically by `net.configure_tls()` at the start of every entry point (see the
 `troubleshooting` skill). Set `DASHBOARD_CA_BUNDLE` to override.
+
+## Symbol resolution (parser behaviour)
+
+`parse_holdings` resolves each holding in this order: `--ticker-map` (by source ticker **or** by
+ISIN/CUSIP, e.g. `--ticker-map 23703Q203=DQ`), a ticker already carrying a Yahoo suffix, the
+export's `Exchange` column (iShares), the ISIN country, the CUSIP/CINS first letter, else US.
+Ambiguous ones (Taiwan `.TW`/`.TWO`, Korea `.KS`/`.KQ`, Cayman/Bermuda US vs `.HK`, CINS `G`/`Y`)
+are probed once with a batched 5-day `yf.download` and cached in
+`data/manual_universe/symbol_map.json` (gitignored). Holdings with a blank ticker (ADRs) are
+printed as "Not included" with name + identifier and recorded under
+`metadata.universe.ranking.unmapped_holdings`. If the asset-class column exists it decides
+non-equity lines; name keywords are only a fallback.

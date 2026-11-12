@@ -57,14 +57,7 @@ override any symbol with `--ticker-map "LOCAL=YAHOO,..."`.
 - A near-stationary, range-bound price (e.g. BCPG.BK in TAN, 2026) passes Engle-Granger against many
   partners. When one ticker dominates the qualified list, say so instead of presenting those pairs as signal.
 
-## SSL: `CERTIFICATE_VERIFY_FAILED` on this machine
+## SSL: `CERTIFICATE_VERIFY_FAILED`
 
-Python's certifi bundle may lack a root that Windows trusts (HTTPS inspection). Without installing
-anything, build a session bundle and point requests/yfinance at it:
-
-```
-py -3 -c "import ssl,certifi;pem=[open(certifi.where()).read()]+[ssl.DER_cert_to_PEM_cert(c) for s in ('ROOT','CA') for c,e,_ in ssl.enum_certificates(s) if e=='x509_asn'];open('ca_bundle.pem','w').write('\n'.join(pem))"
-export SSL_CERT_FILE=$PWD/ca_bundle.pem REQUESTS_CA_BUNDLE=$PWD/ca_bundle.pem CURL_CA_BUNDLE=$PWD/ca_bundle.pem
-```
-
-Only applies on Windows; on other machines the default bundle normally works.
+Handled automatically by `net.configure_tls()` at the start of every entry point (see the
+`troubleshooting` skill). Set `DASHBOARD_CA_BUNDLE` to override.

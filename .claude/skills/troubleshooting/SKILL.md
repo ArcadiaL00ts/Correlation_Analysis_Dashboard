@@ -26,6 +26,8 @@ description: Diagnose and fix failures in the NASDAQ-100 top-50 correlation dash
 | Fewer than 50 ranked names | Fallback chain exhausted; never accept a smaller universe |
 | `DataSourceError: yfinance returned empty data` | Provider outage, rate limiting, or symbol issue |
 | `ModuleNotFoundError` | Missing dependency |
+| `CERTIFICATE_VERIFY_FAILED` on every fetch | HTTPS inspection (proxy/antivirus). `net.configure_tls()` handles it on Windows automatically; elsewhere set `DASHBOARD_CA_BUNDLE` to the organisation's root PEM. Look for the `[tls]` stderr line |
+| `X (rank N) first traded ..., replaced by Y` | A member listed after the window start; swapped for the next-ranked reserve name (`universe_policy.reserve_size`). `UniverseSourceError` if the reserve runs out |
 
 ## Artifacts
 

@@ -4,6 +4,7 @@
     "index_symbol": "NDX",
     "index_name": "NASDAQ-100",
     "universe_size": 50,
+    "reserve_size": 10,
     "selection_mode": "latest_weight_rank",
     "official_trade_date_offset_days": 1,
     "official_trade_date_lookback_days": 7,

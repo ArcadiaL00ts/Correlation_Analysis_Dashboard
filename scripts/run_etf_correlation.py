@@ -31,6 +31,7 @@ from nasdaq_correlation_dashboard.pairs_cointegration import (
     export_pairs_workbook,
     write_pairs_artifacts,
 )
+from nasdaq_correlation_dashboard.net import configure_tls
 from nasdaq_correlation_dashboard.settings import load_config
 from nasdaq_correlation_dashboard.sources import fetch_prices, validate_prices, write_metadata
 from nasdaq_correlation_dashboard.universe import write_universe
@@ -69,6 +70,7 @@ def parse_args() -> argparse.Namespace:
 
 def main() -> None:
     args = parse_args()
+    configure_tls()
     etf = (args.etf or "").strip().upper()
     if not etf and sys.stdin.isatty():
         etf = input("ETF ticker to analyse (e.g. TAN): ").strip().upper()

@@ -1,12 +1,18 @@
-﻿__pycache__/
+__pycache__/
 .pytest_cache/
 .venv/
 venv/
 data/raw/
 data/processed/
+data/etf/
 exports/
 *.pyc
 *.pptx
 .claude/settings.local.json
 # Junction to .claude/skills for Codex compatibility (canonical copy is tracked there)
 /skills
+# Local holdings downloads (not shipped)
+data/manual_universe/*.csv
+data/manual_universe/*.json
+# Local planning notes
+docs/plans/

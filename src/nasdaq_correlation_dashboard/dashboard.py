@@ -1,6 +1,9 @@
 from __future__ import annotations
 
 import json
+import os
+import subprocess
+import sys
 from pathlib import Path
 
 import pandas as pd
@@ -14,6 +17,7 @@ from nasdaq_correlation_dashboard.correlation import (
     ranked_pairs,
     rolling_average_correlation,
 )
+from nasdaq_correlation_dashboard.cli import period_label
 from nasdaq_correlation_dashboard.settings import load_config
 from nasdaq_correlation_dashboard.theme import inject_styles, plotly_theme, resolve_theme_tokens
 
@@ -29,8 +33,23 @@ HEATMAP_MARKET_LOOKBACKS = {
 
 def main() -> None:
     root = Path(__file__).resolve().parents[2]
-    config = load_config(root / "config" / "dashboard_config.json")
+    # DASHBOARD_CONFIG lets the same app render an ETF-holdings run (see scripts/run_etf_correlation.py).
+    config_override = os.environ.get("DASHBOARD_CONFIG", "").strip()
+    config_path = Path(config_override) if config_override else root / "config" / "dashboard_config.json"
+    if not config_path.is_absolute():
+        config_path = root / config_path
+    config = load_config(config_path)
     paths = config.paths
+    universe_label = str(config.universe_policy.get("index_name", "NASDAQ-100"))
+    is_etf_run = config.universe_policy.get("selection_mode") == "etf_holdings_weight_rank"
+    universe_title = (
+        f"{universe_label} ({config.universe_policy.get('universe_size')} names)"
+        if is_etf_run
+        else f"{universe_label} Top-{config.universe_policy.get('universe_size', 50)}"
+    )
+    benchmark_ticker = str(
+        config.universe_policy.get("benchmark_ticker", HEATMAP_MARKET_DEFAULT_TICKER)
+    )
 
     st.set_page_config(
         page_title=config.visuals["page_title"],
@@ -59,17 +78,25 @@ def main() -> None:
     missing = [name for name, path in required.items() if not path.exists()]
 
     st.markdown("<div class='hero-shell'>", unsafe_allow_html=True)
-    st.title(config.visuals["page_title"])
+    # Escape "$" so a ticker-style title ("$TAN ...") is not parsed as LaTeX by Streamlit markdown.
+    st.title(config.visuals["page_title"].replace("$", r"\$"))
     st.markdown(
         (
             "<div class='hero-subtitle'>"
-            "Official Nasdaq membership authority with transparent top-50 ranking fallbacks "
-            "and locally computed correlations."
-            "</div>"
+            + (
+                f"{universe_label} weighted by the fund's own holdings export, "
+                "with locally computed correlations."
+                if is_etf_run
+                else "Official Nasdaq membership authority with transparent top-50 ranking fallbacks "
+                "and locally computed correlations."
+            )
+            + "</div>"
         ),
         unsafe_allow_html=True,
     )
     st.markdown("</div>", unsafe_allow_html=True)
+
+    _render_rerun_panel(config, config_path, root, is_etf_run)
 
     if missing:
         st.error(
@@ -98,20 +125,25 @@ def main() -> None:
     pair_limit = int(config.analytics["pair_table_limit"])
     strongest_pairs = pd.DataFrame(ranked_pairs(correlation, limit=pair_limit, ascending=False))
     weakest_pairs = pd.DataFrame(ranked_pairs(correlation, limit=pair_limit, ascending=True))
+    # Only offer rolling windows that fit inside the return history (1w/1m lookbacks are short).
+    return_count = len(returns)
+    rolling_windows = [w for w in config.rolling_windows if w < return_count] or [
+        max(2, return_count // 2)
+    ]
     default_window = (
-        config.rolling_windows[1] if len(config.rolling_windows) > 1 else config.rolling_windows[0]
+        rolling_windows[1] if len(rolling_windows) > 1 else rolling_windows[0]
     )
     qualified_count = int(pairs_metadata.get("counts", {}).get("pairs_qualified", 0)) if pairs_metadata else 0
-    tickers = [HEATMAP_MARKET_DEFAULT_TICKER] + [
-        ticker for ticker in universe["ticker"].tolist() if ticker != HEATMAP_MARKET_DEFAULT_TICKER
+    tickers = [benchmark_ticker] + [
+        ticker for ticker in universe["ticker"].tolist() if ticker != benchmark_ticker
     ]
     price_refresh_token = (
         metadata.get("created_at_utc") or str(paths["raw_prices_csv"].stat().st_mtime_ns)
     )
 
-    metric_a, metric_b, metric_c, metric_d = st.columns(4)
+    metric_a, metric_b, metric_c, metric_d = st.columns([0.8, 1.7, 1, 1])
     metric_a.metric("Universe Size", universe_count)
-    metric_b.metric("Window", f"{metadata['start_date']} to {metadata['end_date']}")
+    metric_b.metric("Window", f"{metadata['start_date']} → {metadata['end_date']}")
     metric_c.metric("Average Pair Corr", f"{average_corr:.3f}")
     metric_d.metric("Cointegrated Pairs", qualified_count if qualified_count else "n/a")
 
@@ -213,7 +245,7 @@ def main() -> None:
         st.subheader("Rolling Average Correlation")
         window = st.select_slider(
             "Rolling Window",
-            options=config.rolling_windows,
+            options=rolling_windows,
             value=default_window,
             key="avg_corr_window",
         )
@@ -221,7 +253,7 @@ def main() -> None:
         st.plotly_chart(
             _build_line_chart(
                 avg_corr,
-                title=f"NASDAQ-100 Top-50 Universe {window}-Day Average Pairwise Correlation",
+                title=f"{universe_title} Universe {window}-Day Average Pairwise Correlation",
                 y_label="Correlation",
                 visuals=config.visuals,
             ),
@@ -261,7 +293,7 @@ def main() -> None:
             selected_pair = st.selectbox("Pair", options=pair_options, index=0)
             rolling_window = st.select_slider(
                 "Rolling Pair Window",
-                options=config.rolling_windows,
+                options=rolling_windows,
                 value=default_window,
                 key="pair_window",
             )
@@ -299,7 +331,7 @@ def main() -> None:
             )
 
     with universe_tab:
-        st.subheader("Resolved Top-50 Universe")
+        st.subheader(f"Resolved {universe_title} Universe")
         st.dataframe(universe, use_container_width=True, hide_index=True)
         st.subheader("Source Lineage")
         lineage = {
@@ -731,9 +763,11 @@ def _render_cointegration_tab(
     metric_left.metric("Qualified Pairs", pairs_metadata["counts"]["pairs_qualified"])
     metric_mid.metric(
         "Analysis Window",
-        f"{analysis_window.get('start_date', 'n/a')} to {analysis_window.get('end_date', 'n/a')}",
+        f"{analysis_window.get('start_date', 'n/a')} → {analysis_window.get('end_date', 'n/a')}",
     )
-    metric_right.metric("Test Lookback", str(pairs_metadata.get("history_period", "n/a")).upper())
+    metric_right.metric(
+        "Test Lookback", period_label(str(pairs_metadata.get("history_period", "n/a"))).upper()
+    )
 
     summary_col, definition_col = st.columns([1.5, 1])
     with summary_col:
@@ -984,6 +1018,96 @@ def _status_card(title: str, lines: list[str]) -> str:
     )
 
 
+def _render_rerun_panel(config, config_path: Path, root: Path, is_etf_run: bool) -> None:
+    """Pick new lookbacks and regenerate the artifacts through the pipeline script, then reload."""
+    metadata_path = config.paths["metadata_json"]
+    pairs_metadata_path = config.paths.get("pairs_metadata_json")
+    current = _read_optional_json(metadata_path if metadata_path.exists() else None)
+    current_pairs = _read_optional_json(pairs_metadata_path)
+    price_choices = [str(c) for c in config.history.get("prompt_choices", [])] or ["1y", "2y"]
+    pair_choices = [str(c) for c in config.pairs_trading.get("prompt_choices", [])] or ["1y"]
+    price_now = str(current.get("prices", {}).get("period") or config.history["period"])
+    pair_now = str(current_pairs.get("history_period") or config.pairs_trading.get("history_period", "1y"))
+
+    with st.expander(
+        f"Lookback · price history {period_label(price_now)} · cointegration {period_label(pair_now)}",
+        expanded=False,
+    ):
+        left, mid, right = st.columns([1, 1, 0.8])
+        price_period = left.selectbox(
+            "Price-history lookback",
+            price_choices,
+            index=price_choices.index(price_now) if price_now in price_choices else 0,
+            format_func=period_label,
+            key="rerun_price_period",
+        )
+        pair_period = mid.selectbox(
+            "Cointegration lookback",
+            pair_choices,
+            index=pair_choices.index(pair_now) if pair_now in pair_choices else 0,
+            format_func=period_label,
+            key="rerun_pair_period",
+        )
+        right.markdown("<div style='height:1.75rem'></div>", unsafe_allow_html=True)
+        clicked = right.button("Re-run analysis", type="primary", use_container_width=True)
+        st.caption(
+            "Re-fetches prices and recomputes returns, the correlation matrix, cointegration pairs and "
+            "both workbooks for the selected windows. The current run is kept as the prior-run snapshot. "
+            "Short windows are noisy: 1w gives only ~4 daily returns per pair, and cointegration needs at "
+            "least 20 overlapping days, so it starts at 1m."
+        )
+        if not clicked:
+            return
+
+        if is_etf_run:
+            command = [
+                sys.executable,
+                str(root / "scripts" / "run_etf_correlation.py"),
+                "--etf",
+                str(config.universe_policy["index_symbol"]),
+            ]
+            holdings = current.get("universe", {}).get("official_source", {}).get("path")
+            if holdings and Path(holdings).exists():
+                command += ["--holdings", holdings]
+        else:
+            command = [
+                sys.executable,
+                str(root / "scripts" / "update_dashboard.py"),
+                "--config",
+                str(config_path),
+            ]
+        command += ["--history-period", price_period, "--pairs-history-period", pair_period]
+
+        env = os.environ.copy()
+        src = str(root / "src")
+        env["PYTHONPATH"] = src + (os.pathsep + env["PYTHONPATH"] if env.get("PYTHONPATH") else "")
+        # The themed spinner renders as a ring (theme.py), so the progress message sits beside it.
+        status = st.empty()
+        status.info(
+            f"Re-running with {period_label(price_period)} of prices and a {period_label(pair_period)} "
+            "cointegration window. "
+            "This usually takes a minute or two."
+        )
+        with st.spinner(""):
+            completed = subprocess.run(
+                command,
+                cwd=root,
+                env=env,
+                stdin=subprocess.DEVNULL,
+                capture_output=True,
+                text=True,
+                timeout=1800,
+                check=False,
+            )
+        status.empty()
+        if completed.returncode != 0:
+            st.error("Re-run failed; the previous artifacts are unchanged where the run stopped early.")
+            st.code((completed.stderr or completed.stdout)[-3000:], language="text")
+            return
+        st.cache_data.clear()
+        st.rerun()
+
+
 def _read_optional_csv(
     path: Path | None,
     parse_dates: list[str] | None = None,
@@ -991,7 +1115,11 @@ def _read_optional_csv(
 ) -> pd.DataFrame:
     if path is None or not path.exists():
         return pd.DataFrame()
-    return pd.read_csv(path, parse_dates=parse_dates, index_col=index_col)
+    try:
+        return pd.read_csv(path, parse_dates=parse_dates, index_col=index_col)
+    except pd.errors.EmptyDataError:
+        # e.g. the spreads export when no pair qualifies (common on 1w/1m lookbacks)
+        return pd.DataFrame()
 
 
 def _read_optional_json(path: Path | None) -> dict:

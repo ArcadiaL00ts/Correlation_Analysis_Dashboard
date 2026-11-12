@@ -53,4 +53,12 @@ def load_config(config_path: str | Path) -> DashboardConfig:
     config_file = Path(config_path).resolve()
     with config_file.open("r", encoding="utf-8") as handle:
         payload = json.load(handle)
-    return DashboardConfig(root=config_file.parent.parent, payload=payload)
+    return DashboardConfig(root=_project_root(config_file), payload=payload)
+
+
+def _project_root(config_file: Path) -> Path:
+    """Nearest ancestor holding pyproject.toml, so configs can live in nested folders."""
+    for candidate in config_file.parents:
+        if (candidate / "pyproject.toml").exists():
+            return candidate
+    return config_file.parent.parent

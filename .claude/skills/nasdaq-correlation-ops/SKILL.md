@@ -1,6 +1,6 @@
 ---
 name: nasdaq-correlation-ops
-description: Refresh, maintain, or extend the NASDAQ-100 top-50 correlation dashboard pipeline. Use when the user asks to update or refresh the dashboard data, resolve the official NASDAQ-100 membership or top-50 ranking, change the Nasdaq → QQQM → Yahoo Finance fallback chain, fix stale or failed price fetches, recompute returns or correlations, regenerate the Excel workbook or processed CSV/JSON artifacts, or change scripts/update_dashboard.py.
+description: Refresh, maintain, or extend the NASDAQ-100 top-50 correlation dashboard pipeline, or run it on any ETF's holdings (e.g. TAN). Use when the user asks to update or refresh the dashboard data, resolve the official NASDAQ-100 membership or top-50 ranking, change the Nasdaq → QQQM → Yahoo Finance fallback chain, fix stale or failed price fetches, recompute returns or correlations, regenerate the Excel workbook or processed CSV/JSON artifacts, or change scripts/update_dashboard.py.
 ---
 
 # NASDAQ Correlation Ops
@@ -42,3 +42,7 @@ Do not report success unless all of these were produced:
 After resolving a bug or environment issue, append a dated note to `codex.md`.
 
 Read [references/source-policy.md](references/source-policy.md) when changing universe resolution, ranking fallbacks, or price providers.
+
+## Running on an ETF's holdings (e.g. TAN)
+
+When the user asks to run the dashboard on an ETF instead of the NASDAQ-100, use `scripts/run_etf_correlation.py --etf <ETF>`. It sizes every analysis to the fund's N holdings and writes to `data/etf/<ETF>/`, so the NASDAQ artifacts are untouched. Read [references/etf-holdings-runs.md](references/etf-holdings-runs.md) first. It covers getting the holdings (local file, issuer download, Claude in Chrome if the user has it connected, or asking the user), Yahoo symbol mapping, and the SSL workaround.

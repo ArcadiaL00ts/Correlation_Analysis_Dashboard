@@ -292,6 +292,13 @@ def inject_styles(visuals: dict) -> None:
             color: var(--text-primary) !important;
             font-family: var(--mono-font) !important;
         }}
+        /* Let long metric values (date windows) wrap instead of truncating with an ellipsis. */
+        [data-testid="stMetricValue"] > div {{
+            white-space: normal !important;
+            overflow: visible !important;
+            text-overflow: clip !important;
+            overflow-wrap: anywhere;
+        }}
 
         [data-testid="stWidgetLabel"] p,
         [data-testid="stWidgetLabel"] span,

@@ -33,6 +33,9 @@
   "history": {
     "period": "2y",
     "prompt_choices": [
+      "5d",
+      "1mo",
+      "3mo",
       "6mo",
       "1y",
       "2y",
@@ -61,6 +64,8 @@
   "pairs_trading": {
     "history_period": "1y",
     "prompt_choices": [
+      "1mo",
+      "3mo",
       "6mo",
       "1y",
       "2y",

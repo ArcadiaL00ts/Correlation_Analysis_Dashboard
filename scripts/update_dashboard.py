@@ -11,6 +11,7 @@ if str(SRC_ROOT) not in sys.path:
     sys.path.insert(0, str(SRC_ROOT))
 
 from nasdaq_correlation_dashboard.cli import resolve_history_period as _resolve_period
+from nasdaq_correlation_dashboard.cli import scaled_minimum_rows, scaled_window
 from nasdaq_correlation_dashboard.correlation import build_artifacts
 from nasdaq_correlation_dashboard.excel_export import export_workbook
 from nasdaq_correlation_dashboard.pairs_cointegration import (
@@ -91,6 +92,16 @@ def main() -> None:
     paths = config.paths
     history_period = resolve_history_period(args, config)
     pairs_history_period = resolve_pairs_history_period(args, config)
+    # Short lookbacks (1w/1m/3m) cannot meet the 252-row defaults; scale them to the chosen windows.
+    config.payload["validation"]["minimum_rows"] = scaled_minimum_rows(
+        history_period, int(config.validation["minimum_rows"])
+    )
+    config.payload["pairs_trading"]["minimum_rows"] = scaled_minimum_rows(
+        pairs_history_period, int(config.pairs_trading["minimum_rows"])
+    )
+    config.payload["pairs_trading"]["rolling_z_window"] = scaled_window(
+        pairs_history_period, int(config.pairs_trading["rolling_z_window"])
+    )
 
     selection = resolve_universe(config)
     result = fetch_prices(config, selection.tickers)

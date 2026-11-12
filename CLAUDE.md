@@ -67,6 +67,7 @@ config/dashboard_config.json       ← Single source of truth for all settings
 src/nasdaq_correlation_dashboard/
   settings.py                      ← DashboardConfig dataclass + load_config
   universe.py                      ← Live universe resolver (Nasdaq endpoint → QQQM → Yahoo Finance) + refresh_universe preview
+  etf_universe.py                  ← ETF-holdings universe: parse issuer export, map to Yahoo symbols, derive per-ETF config
   sources.py                       ← Price data fetching (yfinance + CSV fallback)
   correlation.py                   ← Return/correlation computation, ranked_pairs, rolling avg corr, prior-run deltas
   pairs_cointegration.py           ← Engle-Granger cointegration analysis, spread z-scores, pairs workbook
@@ -80,9 +81,11 @@ scripts/
   run_pairs_cointegration.py       ← Standalone pairs cointegration run on local processed prices
   run_dashboard.py                 ← Streamlit launcher
   refresh_universe.py              ← Preview resolved universe (read-only)
+  run_etf_correlation.py           ← Same pipeline on any ETF's N holdings → data/etf/<ETF>/, exports/etf/<ETF>/
 
 commands/
   update-dashboard.ps1             ← Windows PowerShell wrapper for update
+  run-etf.ps1                      ← Prompt for an ETF + lookbacks, run on its holdings, open the dashboard
   open-dashboard.ps1               ← Windows PowerShell wrapper for dashboard launch
 
 .claude/skills/                    ← Project skills (canonical); skills/ is a junction to here for Codex
@@ -113,7 +116,7 @@ exports/                           ← Generated Excel workbooks
 ## Guardrails
 
 1. **Never change the universe or fallback order silently.** All changes must be logged in `codex.md`.
-2. **Never accept a universe smaller than 50 names.**
+2. **Never accept a universe smaller than 50 names** for the NASDAQ-100 run. ETF-holdings runs (`run_etf_correlation.py`) are sized to the fund's N holdings and write to isolated paths.
 3. **Never report success** unless universe CSV, correlation CSV, metadata JSON, and Excel workbook were produced.
 4. **Keep the heatmap locked to `[-1, 1]` domain.** Never rescale or clip.
 5. **Preserve the configured heatmap scale** (`heatmap_min/mid/max_color`, currently red → neutral → blue) unless the user explicitly asks for a change.
@@ -151,6 +154,8 @@ When a task involves multiple independent sub-tasks, dispatch them as parallel s
 | `py -3 scripts/update_dashboard.py --history-period 2y` | Pipeline with explicit history override |
 | `py -3 scripts/run_pairs_cointegration.py` | Pairs cointegration only, on existing processed prices |
 | `py -3 scripts/refresh_universe.py` | Preview resolved universe (read-only) |
+| `py -3 scripts/run_etf_correlation.py --etf TAN` | Run on an ETF's holdings (needs `data/manual_universe/TAN_holdings.csv`) |
+| `py -3 scripts/run_dashboard.py --config data/etf/TAN/config.json` | View an ETF run in the dashboard |
 | `py -3 -m unittest discover tests` | Run the test suite |
 | `streamlit run src/nasdaq_correlation_dashboard/dashboard.py` | Direct Streamlit launch |
 

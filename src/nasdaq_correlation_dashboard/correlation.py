@@ -18,6 +18,9 @@ class CorrelationArtifacts:
     metadata: dict[str, Any]
 
 
+ZERO_RETURN_FLAG_THRESHOLD = 0.15
+
+
 def build_artifacts(
     prices: pd.DataFrame,
     price_source_metadata: dict[str, Any],
@@ -37,6 +40,12 @@ def build_artifacts(
     returns = returns.dropna(how="all")
     returns = returns.dropna(axis=0, how="any")
     correlation = returns.corr(method=history["correlation_method"]).round(6)
+    # Share of days with an exactly unchanged price: thin trading or a local holiday that was
+    # forward-filled. High values bias correlations toward zero.
+    zero_return_share = {
+        str(ticker): round(float(value), 4)
+        for ticker, value in (returns == 0).mean().items()
+    } if len(returns) else {}
 
     metadata = {
         "project_name": config.payload["project_name"],
@@ -48,6 +57,8 @@ def build_artifacts(
         "correlation_method": history["correlation_method"],
         "rows": int(len(prices)),
         "return_rows": int(len(returns)),
+        "zero_return_share": zero_return_share,
+        "zero_return_flag_threshold": ZERO_RETURN_FLAG_THRESHOLD,
         "analytics": config.analytics,
         "validation": validation_metadata,
         "universe": universe_metadata,

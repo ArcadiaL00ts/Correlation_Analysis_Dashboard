@@ -77,6 +77,8 @@
     ],
     "cointegration_p_threshold": 0.05,
     "adf_stat_threshold": -2.86,
+    "require_nonstationary_legs": true,
+    "leg_adf_p_threshold": 0.05,
     "minimum_rows": 252,
     "rolling_z_window": 60,
     "top_table_limit": 10,

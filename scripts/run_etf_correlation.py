@@ -174,6 +174,8 @@ def main() -> None:
         config=PairAnalysisConfig(
             cointegration_p_threshold=float(config.pairs_trading["cointegration_p_threshold"]),
             adf_stat_threshold=float(config.pairs_trading["adf_stat_threshold"]),
+            require_nonstationary_legs=bool(config.pairs_trading.get("require_nonstationary_legs", True)),
+            leg_adf_p_threshold=float(config.pairs_trading.get("leg_adf_p_threshold", 0.05)),
             min_observations=int(config.pairs_trading["minimum_rows"]),
             rolling_z_window=int(config.pairs_trading["rolling_z_window"]),
             top_spread_export=int(config.pairs_trading["spread_export_limit"]),

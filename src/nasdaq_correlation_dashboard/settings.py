@@ -62,3 +62,19 @@ def _project_root(config_file: Path) -> Path:
         if (candidate / "pyproject.toml").exists():
             return candidate
     return config_file.parent.parent
+
+
+def project_root() -> Path:
+    """The checkout holding ``config/dashboard_config.json``.
+
+    The package directory's checkout wins (editable install or running from source); otherwise the
+    current working directory, so a regular install works when run from inside a clone.
+    """
+    package_checkout = Path(__file__).resolve().parents[2]
+    if (package_checkout / "config" / "dashboard_config.json").exists():
+        return package_checkout
+    return Path.cwd()
+
+
+def default_config_path() -> Path:
+    return project_root() / "config" / "dashboard_config.json"

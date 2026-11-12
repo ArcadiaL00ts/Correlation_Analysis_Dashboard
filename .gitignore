@@ -20,3 +20,6 @@ docs/plans/
 .codex/
 tradingview/
 prompts/ui_ux_design_system_reference.md
+*.egg-info/
+build/
+dist/

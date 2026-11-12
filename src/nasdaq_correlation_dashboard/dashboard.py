@@ -385,7 +385,7 @@ def main() -> None:
             [
                 {
                     "artifact": name,
-                    "path": str(path.relative_to(root)),
+                    "path": _display_path(path, config.root),
                     "exists": path.exists(),
                     "size_bytes": path.stat().st_size if path.exists() else None,
                 }
@@ -1227,6 +1227,13 @@ def _read_optional_csv(
     except pd.errors.EmptyDataError:
         # e.g. the spreads export when no pair qualifies (common on 1w/1m lookbacks)
         return pd.DataFrame()
+
+
+def _display_path(path: Path, root: Path) -> str:
+    try:
+        return str(path.relative_to(root))
+    except ValueError:  # artifacts outside the config's project root
+        return str(path)
 
 
 def _read_optional_json(path: Path | None) -> dict:

@@ -226,7 +226,7 @@ def main() -> None:
     if dropped:
         print("Dropped (unpriced):", ", ".join(f"{d['ticker']} ({d['reason']})" for d in dropped))
     print(f"Workbook: {paths['excel_workbook']}")
-    print(f"View: py -3 scripts/run_dashboard.py --config {config_path.relative_to(config.root)}")
+    print(f"View: corrdash-app --config {config_path}   (or: py -3 scripts/run_dashboard.py --config {config_path})")
 
 
 if __name__ == "__main__":

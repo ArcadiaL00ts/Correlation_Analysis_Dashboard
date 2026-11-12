@@ -212,7 +212,8 @@ def inject_styles(visuals: dict) -> None:
         .definition-card,
         [data-testid="stMetric"],
         [data-testid="stDataFrame"],
-        .stTabs [data-baseweb="tab-list"] {{
+        .stTabs [data-baseweb="tab-list"],
+        .stTabs [role="tablist"] {{
             border: 1px solid var(--panel-border) !important;
             border-radius: 16px;
             background: linear-gradient(180deg, rgba(255,255,255,0.04), rgba(255,255,255,0.01)), var(--panel-bg);
@@ -252,11 +253,14 @@ def inject_styles(visuals: dict) -> None:
             min-height: 10rem;
         }}
 
-        .stTabs [data-baseweb="tab-list"] {{
+        /* data-baseweb selectors: Streamlit <= 1.5x; role selectors: React Aria tabs in newer releases. */
+        .stTabs [data-baseweb="tab-list"],
+        .stTabs [role="tablist"] {{
             gap: 0.65rem;
             padding: 0.45rem;
         }}
-        .stTabs [data-baseweb="tab"] {{
+        .stTabs [data-baseweb="tab"],
+        .stTabs [role="tab"] {{
             color: var(--text-muted) !important;
             background: rgba(255,255,255,0.02);
             border: 1px solid rgba(105,142,183,0.24);
@@ -266,7 +270,8 @@ def inject_styles(visuals: dict) -> None:
             font-weight: 600;
             transition: color 140ms ease, border-color 140ms ease, background 140ms ease;
         }}
-        .stTabs [data-baseweb="tab"]:hover {{
+        .stTabs [data-baseweb="tab"]:hover,
+        .stTabs [role="tab"]:hover {{
             color: var(--text-primary) !important;
             border-color: var(--accent-cyan);
             transform: var(--lift-up);
@@ -278,7 +283,8 @@ def inject_styles(visuals: dict) -> None:
             background: linear-gradient(120deg, rgba(53,212,255,0.95), rgba(53,212,255,0.74));
             box-shadow: 0 10px 20px rgba(53,212,255,0.28), 0 0 18px rgba(53,212,255,0.22);
         }}
-        .stTabs [data-baseweb="tab-highlight"] {{
+        .stTabs [data-baseweb="tab-highlight"],
+        .stTabs .react-aria-SelectionIndicator {{
             background: transparent !important;
             height: 0 !important;
         }}
@@ -461,6 +467,7 @@ def inject_styles(visuals: dict) -> None:
             .definition-card:hover,
             [data-testid="stMetric"]:hover,
             .stTabs [data-baseweb="tab"]:hover,
+            .stTabs [role="tab"]:hover,
             .stForm button:hover,
             div[data-baseweb="select"] > div:hover,
             div[data-baseweb="base-input"] > div:hover,

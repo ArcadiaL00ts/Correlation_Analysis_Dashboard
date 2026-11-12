@@ -81,6 +81,9 @@ def select_tickers(
     return chosen
 
 
+MIN_COINTEGRATION_OBSERVATIONS = 20
+
+
 def analyze_pairs(
     prices: pd.DataFrame,
     tickers: list[str],
@@ -91,7 +94,10 @@ def analyze_pairs(
     analysis_prices = select_analysis_window(prices, config.history_period)
     effective_config = replace(
         config,
-        min_observations=min(config.min_observations, len(analysis_prices)),
+        # Shrink to short windows, but never below the floor where Engle-Granger/ADF is meaningful.
+        min_observations=max(
+            MIN_COINTEGRATION_OBSERVATIONS, min(config.min_observations, len(analysis_prices))
+        ),
     )
     pair_rows: list[dict[str, Any]] = []
     spread_exports: list[pd.DataFrame] = []
@@ -239,6 +245,9 @@ def select_analysis_window(prices: pd.DataFrame, history_period: str) -> pd.Data
     if normalized == "max":
         return prices.copy()
     offset_map = {
+        "5d": pd.DateOffset(days=7),
+        "1mo": pd.DateOffset(months=1),
+        "3mo": pd.DateOffset(months=3),
         "6mo": pd.DateOffset(months=6),
         "1y": pd.DateOffset(years=1),
         "2y": pd.DateOffset(years=2),

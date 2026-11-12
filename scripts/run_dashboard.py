@@ -1,5 +1,6 @@
 ﻿from __future__ import annotations
 
+import argparse
 import os
 import shutil
 import subprocess
@@ -35,6 +36,12 @@ def _cleanup_stale_dashboard_processes(app_path: Path) -> None:
 
 
 def main() -> None:
+    parser = argparse.ArgumentParser(description="Launch the Streamlit correlation dashboard.")
+    parser.add_argument(
+        "--config",
+        help="Alternate config to display, e.g. data/etf/TAN/config.json from run_etf_correlation.py.",
+    )
+    args = parser.parse_args()
     streamlit = shutil.which("streamlit")
     app_path = SRC_ROOT / "nasdaq_correlation_dashboard" / "dashboard.py"
     _cleanup_stale_dashboard_processes(app_path)
@@ -44,6 +51,8 @@ def main() -> None:
     existing = env.get("PYTHONPATH", "")
     env["PYTHONPATH"] = str(SRC_ROOT) if not existing else f"{SRC_ROOT}{os.pathsep}{existing}"
     env["STREAMLIT_BROWSER_GATHER_USAGE_STATS"] = "false"
+    if args.config:
+        env["DASHBOARD_CONFIG"] = str(Path(args.config).resolve())
     if streamlit is not None:
         command = [
             streamlit,

@@ -10,6 +10,7 @@ if str(SRC_ROOT) not in sys.path:
     sys.path.insert(0, str(SRC_ROOT))
 
 from nasdaq_correlation_dashboard.cli import resolve_history_period as _resolve_period
+from nasdaq_correlation_dashboard.cli import scaled_window
 from nasdaq_correlation_dashboard.pairs_cointegration import (
     PairAnalysisConfig,
     analyze_pairs,
@@ -103,7 +104,8 @@ def main() -> None:
         tickers=selected_tickers,
         config=PairAnalysisConfig(
             min_observations=args.min_obs or int(config.pairs_trading["minimum_rows"]),
-            rolling_z_window=args.rolling_z_window or int(config.pairs_trading["rolling_z_window"]),
+            rolling_z_window=args.rolling_z_window
+            or scaled_window(history_period, int(config.pairs_trading["rolling_z_window"])),
             top_spread_export=args.top_spreads or int(config.pairs_trading["spread_export_limit"]),
             cointegration_p_threshold=float(config.pairs_trading["cointegration_p_threshold"]),
             adf_stat_threshold=float(config.pairs_trading["adf_stat_threshold"]),

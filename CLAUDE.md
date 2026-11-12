@@ -61,6 +61,8 @@ These values must never be changed without explicit user approval.
 ```
 CLAUDE.md                          ← Authoritative Claude Code instructions (this file)
 codex.md                           ← Human-readable operating guide + troubleshooting log
+README.md / CONTRIBUTING.md / LICENSE (MIT)
+.github/workflows/tests.yml        ← CI: offline tests on ubuntu + windows, Python 3.11/3.12
 pyproject.toml                     ← Package metadata (src layout) + corrdash-* console scripts; requirements.txt mirrors deps
 config/dashboard_config.json       ← Single source of truth for all settings
 
@@ -100,10 +102,13 @@ commands/
   pairs-cointegration-ops/         ← Pairs trading cointegration workflow
   correlation-delta-tracking/      ← Prior-run snapshots and correlation-change views
 
-tests/                             ← unittest suite (py -3 -m unittest discover tests)
+tests/                             ← Offline unittest suite (py -3 -m unittest discover tests); __init__ blocks network
+  fixture_artifacts.py             ← Builds a 5-ticker artifact set for the dashboard smoke test
+  fixtures/holdings/               ← Invesco- and iShares-layout holdings fixtures
 prompts/                           ← Prompt templates
 docs/plans/                        ← Local planning notes (gitignored)
 docs/presentations/                ← Slide decks (gitignored *.pptx)
+docs/images/                       ← README screenshots
 data/processed/                    ← Generated CSV/JSON artifacts
 exports/                           ← Generated Excel workbooks
 ```

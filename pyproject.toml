@@ -7,6 +7,8 @@ name = "nasdaq-correlation-dashboard"
 version = "0.1.0"
 description = "Correlation and cointegration dashboard for the top-50 NASDAQ-100 constituents."
 requires-python = ">=3.11"
+license = { text = "MIT" }
+readme = "README.md"
 dependencies = [
     "pandas>=2.2.0,<3.0",
     "numpy>=1.26.0,<3",

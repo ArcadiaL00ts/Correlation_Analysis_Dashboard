@@ -424,10 +424,12 @@ def inject_styles(visuals: dict) -> None:
             color: var(--text-primary) !important;
             text-shadow: 0 0 10px rgba(53,212,255,0.24);
         }}
-        [data-testid="stSpinner"] > div {{
+        [data-testid="stSpinnerIcon"] {{
             position: relative;
-            width: 66px !important;
-            height: 66px !important;
+            /* Ring only on the icon, so spinner text never sits inside it. */
+            width: 32px !important;
+            height: 32px !important;
+            flex: 0 0 auto;
             border-radius: 50% !important;
             border: 2px solid rgba(53,212,255,0.24) !important;
             border-top-color: var(--accent-cyan) !important;
@@ -436,10 +438,10 @@ def inject_styles(visuals: dict) -> None:
             box-shadow: 0 0 24px rgba(53,212,255,0.22), inset 0 0 16px rgba(53,212,255,0.18);
             background: radial-gradient(circle at center, rgba(53,212,255,0.10), transparent 64%);
         }}
-        [data-testid="stSpinner"] > div::before {{
+        [data-testid="stSpinnerIcon"]::before {{
             content: "";
             position: absolute;
-            inset: 11px;
+            inset: 5px;
             border-radius: 50%;
             border: 2px solid transparent;
             border-left-color: rgba(123,169,255,0.70);
@@ -465,8 +467,8 @@ def inject_styles(visuals: dict) -> None:
             div[data-baseweb="input"] > div:hover {{
                 transform: none;
             }}
-            [data-testid="stSpinner"] > div,
-            [data-testid="stSpinner"] > div::before {{
+            [data-testid="stSpinnerIcon"],
+            [data-testid="stSpinnerIcon"]::before {{
                 animation-duration: 2.2s !important;
             }}
         }}

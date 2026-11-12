@@ -109,6 +109,8 @@ def main() -> None:
             top_spread_export=args.top_spreads or int(config.pairs_trading["spread_export_limit"]),
             cointegration_p_threshold=float(config.pairs_trading["cointegration_p_threshold"]),
             adf_stat_threshold=float(config.pairs_trading["adf_stat_threshold"]),
+            require_nonstationary_legs=bool(config.pairs_trading.get("require_nonstationary_legs", True)),
+            leg_adf_p_threshold=float(config.pairs_trading.get("leg_adf_p_threshold", 0.05)),
             history_period=history_period,
         ),
         source_path=prices_path,

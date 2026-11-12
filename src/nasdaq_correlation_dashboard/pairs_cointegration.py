@@ -20,6 +20,7 @@ DEFAULT_ADF_STAT_THRESHOLD = -2.86
 DEFAULT_MIN_OBS = 252
 DEFAULT_ROLLING_Z_WINDOW = 60
 DEFAULT_TOP_SPREAD_EXPORT = 10
+DEFAULT_LEG_ADF_P_THRESHOLD = 0.05
 
 
 @dataclass(frozen=True)
@@ -30,6 +31,10 @@ class PairAnalysisConfig:
     rolling_z_window: int = DEFAULT_ROLLING_Z_WINDOW
     top_spread_export: int = DEFAULT_TOP_SPREAD_EXPORT
     history_period: str = "max"
+    # Engle-Granger assumes both legs are I(1). A leg whose log price already rejects a unit root
+    # (range-bound) "cointegrates" with almost anything, so such pairs are not qualified.
+    require_nonstationary_legs: bool = True
+    leg_adf_p_threshold: float = DEFAULT_LEG_ADF_P_THRESHOLD
 
 
 @dataclass
@@ -102,6 +107,12 @@ def analyze_pairs(
     pair_rows: list[dict[str, Any]] = []
     spread_exports: list[pd.DataFrame] = []
     pair_count = math.comb(len(tickers), 2)
+    leg_adf_p = {ticker: leg_level_adf_p_value(analysis_prices[ticker]) for ticker in tickers}
+    stationary_legs = sorted(
+        ticker
+        for ticker, p_value in leg_adf_p.items()
+        if pd.notna(p_value) and p_value < config.leg_adf_p_threshold
+    )
 
     for ticker_a, ticker_b in combinations(tickers, 2):
         pair_frame = analysis_prices[[ticker_a, ticker_b]].dropna()
@@ -111,6 +122,7 @@ def analyze_pairs(
             ticker_b=ticker_b,
             config=effective_config,
         )
+        _apply_leg_stationarity(result, leg_adf_p, config)
         pair_rows.append(result)
         if not spread_frame.empty:
             spread_exports.append(spread_frame)
@@ -192,6 +204,8 @@ def analyze_pairs(
         "minimum_rows_target": config.min_observations,
         "minimum_rows_effective": effective_config.min_observations,
         "rolling_z_window": config.rolling_z_window,
+        "require_nonstationary_legs": config.require_nonstationary_legs,
+        "leg_adf_p_threshold": config.leg_adf_p_threshold,
     }
     threshold_definitions = {
         "cointegration_p_threshold": "Lower p-values mean stronger evidence that the pair shares a stable long-run relationship rather than moving together by chance.",
@@ -199,6 +213,7 @@ def analyze_pairs(
         "minimum_rows_effective": "Minimum overlapping daily observations required before the pair is tested after adjusting for the selected trailing window.",
         "minimum_rows_target": "Target overlap floor for robust estimation before any window-length adjustment is applied.",
         "rolling_z_window": "Lookback window used to standardize the latest spread relative to its recent behavior.",
+        "require_nonstationary_legs": "Each stock on its own must wander like a random walk (its price-level ADF p-value is at least the leg threshold). A stock that just bounces inside a range would look 'cointegrated' with almost anything, so pairs that contain one are tested but not qualified.",
     }
     metadata = {
         "created_at_utc": pd.Timestamp.utcnow().isoformat(),
@@ -214,7 +229,11 @@ def analyze_pairs(
             "tickers": len(tickers),
             "pairs_tested": pair_count,
             "pairs_qualified": int(qualified_pairs["qualified_flag"].sum()),
+            "pairs_excluded_stationary_leg": int(all_pairs["excluded_stationary_leg"].sum()),
         },
+        "stationary_legs": [
+            {"ticker": ticker, "adf_p_value": round(float(leg_adf_p[ticker]), 6)} for ticker in stationary_legs
+        ],
         "thresholds": thresholds,
         "threshold_definitions": threshold_definitions,
         "top_pairs": qualified_pairs.head(config.top_spread_export).to_dict(orient="records"),
@@ -238,6 +257,43 @@ def analyze_pairs(
         provenance=provenance,
         metadata=metadata,
     )
+
+
+def leg_level_adf_p_value(series: pd.Series) -> float:
+    """ADF p-value of one ticker's log price level (constant, no trend). NaN if it can't be tested."""
+    clean = series.dropna()
+    clean = clean[clean > 0]
+    if len(clean) < MIN_COINTEGRATION_OBSERVATIONS or clean.nunique() < 3:
+        return float("nan")
+    try:
+        with warnings.catch_warnings():
+            warnings.simplefilter("ignore")
+            return float(adfuller(np.log(clean.astype(float)), regression="c", autolag="AIC")[1])
+    except Exception:  # noqa: BLE001 - an untestable leg is reported as NaN, not a crash
+        return float("nan")
+
+
+def _apply_leg_stationarity(row: dict[str, Any], leg_adf_p: dict[str, float], config: PairAnalysisConfig) -> None:
+    y_p = leg_adf_p.get(row["ticker_y"], float("nan"))
+    x_p = leg_adf_p.get(row["ticker_x"], float("nan"))
+    row["leg_y_adf_p"] = y_p
+    row["leg_x_adf_p"] = x_p
+    stationary = [
+        f"{ticker} (p={p_value:.3f})"
+        for ticker, p_value in ((row["ticker_y"], y_p), (row["ticker_x"], x_p))
+        if pd.notna(p_value) and p_value < config.leg_adf_p_threshold
+    ]
+    row["both_legs_nonstationary"] = not stationary
+    row["excluded_stationary_leg"] = bool(stationary) and config.require_nonstationary_legs and bool(
+        row.get("qualified_flag")
+    )
+    if row["excluded_stationary_leg"]:
+        row["qualified_flag"] = False
+        note = (
+            f"Not qualified: range-bound leg {', '.join(stationary)} rejects a unit root, so the "
+            "Engle-Granger assumption that both legs trend fails."
+        )
+        row["notes"] = " | ".join(part for part in (str(row.get("notes") or "").strip(), note) if part)
 
 
 def select_analysis_window(prices: pd.DataFrame, history_period: str) -> pd.DataFrame:
@@ -525,8 +581,9 @@ def _apply_pair_ranking(all_pairs: pd.DataFrame) -> pd.DataFrame:
     ranked_map = qualified.set_index("pair")[["rank", "ranking_score"]]
     merged = all_pairs.copy()
     merged = merged.merge(ranked_map, on="pair", how="left", suffixes=("", "_qualified"))
-    merged["rank"] = merged["rank_qualified"].combine_first(merged["rank"])
-    merged["ranking_score"] = merged["ranking_score_qualified"].combine_first(merged["ranking_score"])
+    # Only qualified pairs are ranked; every other row keeps the NaN default from _base_result_row.
+    merged["rank"] = merged["rank_qualified"].astype(float)
+    merged["ranking_score"] = merged["ranking_score_qualified"].astype(float)
     merged = merged.drop(
         columns=[
             column

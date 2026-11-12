@@ -334,7 +334,31 @@ def main() -> None:
 
     with universe_tab:
         st.subheader(f"Resolved {universe_title} Universe")
-        st.dataframe(universe, use_container_width=True, hide_index=True)
+        zero_share = metadata.get("zero_return_share") or {}
+        universe_view = universe.copy()
+        if zero_share:
+            universe_view["zero_return_days"] = universe_view["ticker"].map(zero_share)
+        st.dataframe(
+            universe_view,
+            use_container_width=True,
+            hide_index=True,
+            column_config={
+                "zero_return_days": st.column_config.NumberColumn(
+                    "Zero-return days", format="percent", help="Share of days with an unchanged price"
+                )
+            },
+        )
+        flag = float(metadata.get("zero_return_flag_threshold", 0.15))
+        flagged = sorted(
+            ((ticker, share) for ticker, share in zero_share.items() if share > flag),
+            key=lambda item: -item[1],
+        )
+        if flagged:
+            st.caption(
+                f"Above {flag:.0%} zero-return days (thin trading or local holidays; their correlations "
+                "with other names read low): "
+                + ", ".join(f"{ticker} {share:.0%}" for ticker, share in flagged)
+            )
         substitutions = metadata["universe"].get("history_substitutions") or []
         if substitutions:
             st.caption(
@@ -772,6 +796,18 @@ def _render_cointegration_tab(
     thresholds = pairs_metadata.get("thresholds", {})
     definitions = pairs_metadata.get("threshold_definitions", {})
     analysis_window = pairs_metadata.get("analysis_window", {})
+    counts = pairs_metadata.get("counts", {})
+    passed_lines = [
+        f"Engle-Granger p-value < {thresholds.get('cointegration_p_threshold', 'n/a')}",
+        f"ADF statistic < {thresholds.get('adf_stat_threshold', 'n/a')}",
+        f"Effective overlap floor: {thresholds.get('minimum_rows_effective', 'n/a')} trading days",
+    ]
+    if thresholds.get("require_nonstationary_legs"):
+        stationary = ", ".join(item["ticker"] for item in pairs_metadata.get("stationary_legs", [])) or "none"
+        passed_lines.append(
+            f"Both legs trend (price-level ADF p ≥ {thresholds.get('leg_adf_p_threshold', 0.05)}); "
+            f"{counts.get('pairs_excluded_stationary_leg', 0)} pairs excluded; range-bound: {stationary}"
+        )
 
     metric_left, metric_mid, metric_right = st.columns(3)
     metric_left.metric("Qualified Pairs", pairs_metadata["counts"]["pairs_qualified"])
@@ -788,11 +824,7 @@ def _render_cointegration_tab(
         st.markdown(
             _status_card(
                 "What Passed",
-                [
-                    f"Engle-Granger p-value < {thresholds.get('cointegration_p_threshold', 'n/a')}",
-                    f"ADF statistic < {thresholds.get('adf_stat_threshold', 'n/a')}",
-                    f"Effective overlap floor: {thresholds.get('minimum_rows_effective', 'n/a')} trading days",
-                ],
+                passed_lines,
             ),
             unsafe_allow_html=True,
         )
@@ -806,6 +838,7 @@ def _render_cointegration_tab(
                     ("Effective overlap", definitions.get("minimum_rows_effective", "")),
                     ("Target overlap", definitions.get("minimum_rows_target", "")),
                     ("Rolling z-score", definitions.get("rolling_z_window", "")),
+                    ("Trending legs", definitions.get("require_nonstationary_legs", "")),
                 ],
             ),
             unsafe_allow_html=True,

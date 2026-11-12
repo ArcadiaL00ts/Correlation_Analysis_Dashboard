@@ -27,6 +27,7 @@ Use the local processed price data to find statistically cointegrated equity pai
 - Qualify a pair only when both conditions pass:
   - cointegration `p_value < 0.05`
   - ADF test statistic `< -2.86`
+  - Both legs non-stationary: each ticker's log-price ADF p-value `>= 0.05` (`pairs_trading.require_nonstationary_legs`, `leg_adf_p_threshold`). Pairs with a range-bound leg stay in `_all.csv` with `excluded_stationary_leg = True` and a note, but are not qualified.
 - Test both orientations of the pair and keep the stronger direction.
 - Use price levels, not returns, for the cointegration tests.
 - Compute hedge ratio with OLS and export spread diagnostics including the latest z-score.

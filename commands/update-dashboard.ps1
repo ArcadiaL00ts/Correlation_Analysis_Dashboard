@@ -1,8 +1,9 @@
 $ErrorActionPreference = "Stop"
 
 function Resolve-PythonCommand {
-    if (Get-Command python -ErrorAction SilentlyContinue) { return "python" }
+    # Prefer the py launcher: a bare `python` may be the Microsoft Store stub, which runs nothing.
     if (Get-Command py -ErrorAction SilentlyContinue) { return "py" }
+    if (Get-Command python -ErrorAction SilentlyContinue) { return "python" }
     throw "Python was not found. Install Python 3.11+ and the project requirements first."
 }
 

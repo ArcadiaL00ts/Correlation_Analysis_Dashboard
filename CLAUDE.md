@@ -61,11 +61,11 @@ These values must never be changed without explicit user approval.
 ```
 CLAUDE.md                          ← Authoritative Claude Code instructions (this file)
 codex.md                           ← Human-readable operating guide + troubleshooting log
-pyproject.toml                     ← Package metadata (src layout); requirements.txt kept for the scripts
+pyproject.toml                     ← Package metadata (src layout) + corrdash-* console scripts; requirements.txt mirrors deps
 config/dashboard_config.json       ← Single source of truth for all settings
 
 src/nasdaq_correlation_dashboard/
-  settings.py                      ← DashboardConfig dataclass + load_config
+  settings.py                      ← DashboardConfig dataclass + load_config, project_root, default_config_path
   universe.py                      ← Live universe resolver (Nasdaq endpoint → QQQM → Yahoo Finance) + refresh_universe preview
   etf_universe.py                  ← ETF-holdings universe: parse issuer export, map to Yahoo symbols, derive per-ETF config
   sources.py                       ← Price data fetching (yfinance + CSV fallback)
@@ -75,8 +75,12 @@ src/nasdaq_correlation_dashboard/
   cli.py                           ← Shared history-period resolver for the pipeline scripts
   theme.py                         ← Theme tokens, Plotly palette, injected Streamlit CSS
   dashboard.py                     ← Streamlit multi-tab GUI (Heatmap, Rolling, Cointegration, Universe, Run Status)
+  net.py                           ← configure_tls(): HTTPS behind proxies/antivirus (DASHBOARD_CA_BUNDLE, Windows store bundle)
+  rerun_job.py                     ← Background re-run job for the dashboard (lock + status file + log)
+  atomic_io.py                     ← Atomic CSV/JSON/workbook writes (temp file + os.replace)
+  commands/                        ← Console-script implementations: update, etf, pairs, universe, app
 
-scripts/
+scripts/                           ← Thin shims over nasdaq_correlation_dashboard.commands.* (no install needed)
   update_dashboard.py              ← Full pipeline orchestrator (universe → prices → correlation → pairs → export)
   run_pairs_cointegration.py       ← Standalone pairs cointegration run on local processed prices
   run_dashboard.py                 ← Streamlit launcher
@@ -87,6 +91,7 @@ commands/
   update-dashboard.ps1             ← Windows PowerShell wrapper for update
   run-etf.ps1                      ← Prompt for an ETF + lookbacks, run on its holdings, open the dashboard
   open-dashboard.ps1               ← Windows PowerShell wrapper for dashboard launch
+  *.sh (+ _python.sh)              ← macOS/Linux/Git Bash equivalents of the three .ps1 wrappers
 
 .claude/skills/                    ← Project skills (canonical); skills/ is a junction to here for Codex
   nasdaq-correlation-ops/          ← Refresh pipeline, universe/price providers, artifact regeneration
@@ -97,6 +102,7 @@ commands/
 
 tests/                             ← unittest suite (py -3 -m unittest discover tests)
 prompts/                           ← Prompt templates
+docs/plans/                        ← Local planning notes (gitignored)
 docs/presentations/                ← Slide decks (gitignored *.pptx)
 data/processed/                    ← Generated CSV/JSON artifacts
 exports/                           ← Generated Excel workbooks
@@ -143,11 +149,12 @@ When a task involves multiple independent sub-tasks, dispatch them as parallel s
 
 ## Commands Reference
 
-`python` may not be on PATH on this machine; use `py -3` (the `.ps1` wrappers handle both).
+After `pip install -e .` the `corrdash-*` console scripts work on any OS from any directory. Without an install, use the `scripts/*.py` shims; on Windows `python` may be the Microsoft Store stub, so use `py -3` (the wrappers prefer it).
 
 | Command | Purpose |
 |---------|---------|
-| `commands/update-dashboard.ps1` | Refresh all data + analytics + exports (prompts for history horizon) |
+| `corrdash-update --history-period 2y` / `corrdash-etf --etf TAN` / `corrdash-pairs` / `corrdash-universe` / `corrdash-app [--config ...] [--port N]` | Installed console scripts (same as the scripts below) |
+| `commands/update-dashboard.ps1` / `.sh` | Refresh all data + analytics + exports (prompts for history horizon) |
 | `commands/open-dashboard.ps1` | Launch the Streamlit dashboard |
 | `py -3 scripts/update_dashboard.py` | Direct pipeline execution (interactive horizon prompt) |
 | `py -3 scripts/update_dashboard.py --history-period 2y` | Pipeline with explicit history override |

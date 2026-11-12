@@ -19,7 +19,7 @@ from nasdaq_correlation_dashboard.correlation import (
 from nasdaq_correlation_dashboard.cli import period_label
 from nasdaq_correlation_dashboard import rerun_job
 from nasdaq_correlation_dashboard.net import configure_tls
-from nasdaq_correlation_dashboard.settings import load_config
+from nasdaq_correlation_dashboard.settings import load_config, project_root
 from nasdaq_correlation_dashboard.theme import inject_styles, plotly_theme, resolve_theme_tokens
 
 HEATMAP_MARKET_DEFAULT_TICKER = "QQQM"
@@ -34,7 +34,7 @@ HEATMAP_MARKET_LOOKBACKS = {
 
 def main() -> None:
     configure_tls()
-    root = Path(__file__).resolve().parents[2]
+    root = project_root()
     # DASHBOARD_CONFIG lets the same app render an ETF-holdings run (see scripts/run_etf_correlation.py).
     config_override = os.environ.get("DASHBOARD_CONFIG", "").strip()
     config_path = Path(config_override) if config_override else root / "config" / "dashboard_config.json"
@@ -1150,7 +1150,8 @@ def _rerun_command(
     if is_etf_run:
         command = [
             sys.executable,
-            str(root / "scripts" / "run_etf_correlation.py"),
+            "-m",
+            "nasdaq_correlation_dashboard.commands.etf",
             "--etf",
             str(config.universe_policy["index_symbol"]),
         ]
@@ -1158,13 +1159,13 @@ def _rerun_command(
         if holdings and Path(holdings).exists():
             command += ["--holdings", holdings]
     else:
-        command = [sys.executable, str(root / "scripts" / "update_dashboard.py"), "--config", str(config_path)]
+        command = [sys.executable, "-m", "nasdaq_correlation_dashboard.commands.update", "--config", str(config_path)]
     return command + ["--history-period", price_period, "--pairs-history-period", pair_period]
 
 
 def _rerun_env(root: Path) -> dict[str, str]:
     env = os.environ.copy()
-    src = str(root / "src")
+    src = str(Path(__file__).resolve().parents[1])
     env["PYTHONPATH"] = src + (os.pathsep + env["PYTHONPATH"] if env.get("PYTHONPATH") else "")
     env["PYTHONUNBUFFERED"] = "1"  # so the progress panel's log tail updates while the job runs
     return env

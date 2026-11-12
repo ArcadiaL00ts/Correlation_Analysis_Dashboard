@@ -1,7 +1,6 @@
 from __future__ import annotations
 
 import copy
-import json
 import re
 from datetime import UTC, datetime
 from io import StringIO
@@ -10,6 +9,7 @@ from typing import Any
 
 import pandas as pd
 
+from .atomic_io import write_json
 from .settings import load_config
 from .universe import UniverseSelection, UniverseSourceError
 
@@ -205,6 +205,5 @@ def write_etf_config(base_config_path: Path, etf: str, universe_size: int) -> Pa
     payload["visuals"]["page_title"] = f"${slug} Correlation Analysis"
 
     destination = base.root / data_dir / "config.json"
-    destination.parent.mkdir(parents=True, exist_ok=True)
-    destination.write_text(json.dumps(payload, indent=2), encoding="utf-8")
+    write_json(payload, destination)
     return destination

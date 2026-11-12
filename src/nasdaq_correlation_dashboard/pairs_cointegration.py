@@ -2,7 +2,6 @@ from __future__ import annotations
 
 import math
 import warnings
-import json
 from dataclasses import asdict, dataclass, replace
 from importlib.metadata import PackageNotFoundError, version
 from itertools import combinations
@@ -13,6 +12,8 @@ import numpy as np
 import pandas as pd
 import statsmodels.api as sm
 from statsmodels.tsa.stattools import adfuller, coint
+
+from .atomic_io import atomic_target, write_csv, write_json
 
 
 DEFAULT_COINTEGRATION_P_THRESHOLD = 0.05
@@ -329,7 +330,7 @@ def export_pairs_workbook(
     destination = Path(output_path)
     destination.parent.mkdir(parents=True, exist_ok=True)
 
-    with pd.ExcelWriter(destination, engine="openpyxl") as writer:
+    with atomic_target(destination) as tmp, pd.ExcelWriter(tmp, engine="openpyxl") as writer:
         artifacts.input_summary.to_excel(writer, sheet_name="input_summary", index=False)
         artifacts.all_pairs.to_excel(writer, sheet_name="all_pairs_tested", index=False)
         artifacts.qualified_pairs.to_excel(writer, sheet_name="qualified_pairs", index=False)
@@ -358,14 +359,9 @@ def write_pairs_artifacts(
         (artifacts.qualified_pairs, qualified_pairs_path),
         (artifacts.spread_history, spreads_path),
     ]:
-        target = Path(destination)
-        target.parent.mkdir(parents=True, exist_ok=True)
-        frame.to_csv(target, index=False)
+        write_csv(frame, destination, index=False)
 
-    metadata_target = Path(metadata_path)
-    metadata_target.parent.mkdir(parents=True, exist_ok=True)
-    with metadata_target.open("w", encoding="utf-8") as handle:
-        json.dump(artifacts.metadata, handle, indent=2)
+    write_json(artifacts.metadata, metadata_path)
 
 
 def _analyze_pair_orientations(

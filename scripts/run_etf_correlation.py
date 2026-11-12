@@ -1,8 +1,6 @@
 from __future__ import annotations
 
 import argparse
-import json
-import shutil
 import sys
 from pathlib import Path
 
@@ -18,6 +16,7 @@ from nasdaq_correlation_dashboard.cli import (
     scaled_window,
 )
 from nasdaq_correlation_dashboard.correlation import build_artifacts
+from nasdaq_correlation_dashboard.atomic_io import copy_file, write_csv, write_json
 from nasdaq_correlation_dashboard.etf_universe import (
     build_etf_selection,
     parse_holdings,
@@ -160,7 +159,7 @@ def main() -> None:
     prices = prices[tickers].dropna(how="all")
     prices = prices.loc[prices.notna().all(axis=1).idxmax():]  # start once every name trades
     config.payload["universe_policy"]["universe_size"] = len(tickers)
-    config_path.write_text(json.dumps(config.payload, indent=2), encoding="utf-8")
+    write_json(config.payload, config_path)
 
     selection = build_etf_selection(etf, holdings, holdings_path, skipped, dropped, as_of_date)
     result.metadata["cross_exchange_ffill_limit"] = CROSS_EXCHANGE_FFILL_LIMIT
@@ -191,13 +190,13 @@ def main() -> None:
         ("metadata_json", "previous_metadata_json"),
     ):
         if paths[current].exists():
-            shutil.copy2(paths[current], paths[previous])
+            copy_file(paths[current], paths[previous])
 
     paths["raw_prices_csv"].parent.mkdir(parents=True, exist_ok=True)
     write_universe(selection.universe, paths["universe_csv"])
-    artifacts.prices.to_csv(paths["raw_prices_csv"])
-    artifacts.returns.to_csv(paths["returns_csv"])
-    artifacts.correlation.to_csv(paths["correlation_csv"])
+    write_csv(artifacts.prices, paths["raw_prices_csv"])
+    write_csv(artifacts.returns, paths["returns_csv"])
+    write_csv(artifacts.correlation, paths["correlation_csv"])
     export_workbook(artifacts, config, paths["excel_workbook"])
     export_pairs_workbook(pair_artifacts, paths["pairs_workbook"])
     write_pairs_artifacts(

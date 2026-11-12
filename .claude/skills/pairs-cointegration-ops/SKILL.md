@@ -24,7 +24,7 @@ Use the local processed price data to find statistically cointegrated equity pai
 ## Statistical Rules
 
 - Use Engle-Granger cointegration plus an explicit ADF test on the residual spread.
-- Qualify a pair only when both conditions pass:
+- Qualify a pair only when all conditions pass:
   - cointegration `p_value < 0.05`
   - ADF test statistic `< -2.86`
   - Both legs non-stationary: each ticker's log-price ADF p-value `>= 0.05` (`pairs_trading.require_nonstationary_legs`, `leg_adf_p_threshold`). Pairs with a range-bound leg stay in `_all.csv` with `excluded_stationary_leg = True` and a note, but are not qualified.

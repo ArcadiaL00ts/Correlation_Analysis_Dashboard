@@ -1,12 +1,12 @@
 from __future__ import annotations
 
-import json
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
 
 import pandas as pd
 
+from .atomic_io import write_json
 from .settings import DashboardConfig
 
 
@@ -163,6 +163,4 @@ def validate_prices(prices: pd.DataFrame, tickers: list[str], config: DashboardC
 
 
 def write_metadata(metadata: dict[str, Any], destination: Path) -> None:
-    destination.parent.mkdir(parents=True, exist_ok=True)
-    with destination.open("w", encoding="utf-8") as handle:
-        json.dump(metadata, handle, indent=2)
+    write_json(metadata, destination)

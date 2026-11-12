@@ -9,6 +9,7 @@ from openpyxl.styles import Alignment, Font, PatternFill
 from openpyxl.utils import get_column_letter
 
 from .correlation import CorrelationArtifacts, ranked_pairs
+from .atomic_io import atomic_target
 from .settings import DashboardConfig
 
 
@@ -63,8 +64,8 @@ def export_workbook(
         ),
     )
 
-    destination.parent.mkdir(parents=True, exist_ok=True)
-    workbook.save(destination)
+    with atomic_target(destination) as tmp:
+        workbook.save(tmp)
 
 
 def _write_metadata_sheet(sheet, artifacts: CorrelationArtifacts) -> None:

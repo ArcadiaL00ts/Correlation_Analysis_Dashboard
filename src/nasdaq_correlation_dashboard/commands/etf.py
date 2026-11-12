@@ -17,6 +17,7 @@ from ..etf_universe import (
     build_etf_selection,
     parse_holdings,
     read_holdings_file,
+    resolve_ambiguous_symbols,
     write_etf_config,
 )
 from ..excel_export import export_workbook
@@ -106,6 +107,16 @@ def main() -> None:
     )
     holdings, skipped = parse_holdings(read_holdings_file(holdings_path), ticker_map)
     as_of_date = holdings.attrs.get("as_of_date")
+    # Holdings whose exchange is ambiguous (e.g. Taiwan .TW vs .TWO) are probed once and cached.
+    holdings, symbol_report = resolve_ambiguous_symbols(
+        holdings, cache_path=project_root() / "data" / "manual_universe" / "symbol_map.json"
+    )
+    for item in symbol_report:
+        if item["how"] != "cache":
+            print(f"{item['source_ticker']}: {item['chosen']} ({item['how']}; candidates {', '.join(item['candidates'])})")
+    unmapped = [item for item in skipped if item.get("reason") != "non-equity line"]
+    for item in unmapped:
+        print(f"Not included: {item['name'] or '?'} ({item.get('identifier') or 'no id'}, weight {item['weight']}): {item['reason']}")
 
     config_path = write_etf_config(Path(args.base_config), etf, len(holdings))
     config = load_config(config_path)
@@ -157,7 +168,7 @@ def main() -> None:
     config.payload["universe_policy"]["universe_size"] = len(tickers)
     write_json(config.payload, config_path)
 
-    selection = build_etf_selection(etf, holdings, holdings_path, skipped, dropped, as_of_date)
+    selection = build_etf_selection(etf, holdings, holdings_path, skipped, dropped, as_of_date, symbol_report)
     result.metadata["cross_exchange_ffill_limit"] = CROSS_EXCHANGE_FFILL_LIMIT
     validation = validate_prices(prices, tickers, config)
     artifacts = build_artifacts(prices, result.metadata, selection.metadata, validation, config)

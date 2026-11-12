@@ -1,4 +1,4 @@
-﻿$ErrorActionPreference = "Stop"
+$ErrorActionPreference = "Stop"
 
 function Resolve-PythonCommand {
     if (Get-Command python -ErrorAction SilentlyContinue) { return "python" }

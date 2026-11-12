@@ -166,3 +166,8 @@ Recovery point: git commit `a5e03e2` ("Baseline before reorg") holds the full pr
   - The ETF runner ignores leading gaps when checking a ticker's missing ratio, since they are trimmed to the common start anyway. Otherwise a foreign holiday on the first day of a 1w window would count as 20% missing.
   - Verified on TAN: 1w (5 rows, 0 pairs as expected), 1m (23 rows, 66/595 pairs), 3m (66 rows, 81/595 pairs). All render with 0 exceptions.
 
+### 2026-11-13 — GitHub release prep
+
+Branch `release-prep`. Checkpoint of the TAN session: `ea27d50`.
+
+- **Repo hygiene (not published, files stay on disk):** `.codex/` (third-party `ui-ux-pro-max` skill with no license), `tradingview/` (personal Pine scripts), `prompts/ui_ux_design_system_reference.md` (output of that skill), `data/manual_universe/*.csv|*.json` (local holdings downloads) and `docs/plans/` are untracked and gitignored. Added `.gitattributes` (LF for code/docs, CRLF for `.ps1`). Stripped UTF-8 BOMs from `commands/*.ps1`, `scripts/run_dashboard.py` and `data/manual_prices/.gitkeep` (the `.ps1` files are pure ASCII, so Windows PowerShell 5.1 still reads them correctly).

@@ -1,0 +1,4 @@
+interface:
+  display_name: "Pairs Cointegration Ops"
+  short_description: "Scan and rank cointegrated equity pairs."
+  default_prompt: "Use $pairs-cointegration-ops to test local price data for cointegrated pairs, compute spreads and z-scores, and export the ranked Excel workbook."

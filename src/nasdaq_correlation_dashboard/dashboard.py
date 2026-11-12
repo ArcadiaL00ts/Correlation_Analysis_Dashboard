@@ -155,7 +155,8 @@ def main() -> None:
             _status_card(
                 "Universe Provenance",
                 [
-                    f"Official trade date: {metadata['universe']['official_source']['trade_date']}",
+                    f"{'Holdings as of' if is_etf_run else 'Official trade date'}: "
+                    f"{metadata['universe']['official_source']['trade_date']}",
                     f"Ranking source: {ranking_type}",
                     f"Resolved tickers: {len(metadata['universe']['final_tickers'])}",
                 ],
@@ -211,7 +212,7 @@ def main() -> None:
                 refresh_token=price_refresh_token,
                 visuals=config.visuals,
             ),
-            use_container_width=True,
+            width="stretch",
             config={"displayModeBar": False},
             theme=None,
         )
@@ -219,7 +220,7 @@ def main() -> None:
         st.markdown("<div class='section-gap section-gap-block'></div>", unsafe_allow_html=True)
         st.plotly_chart(
             _build_heatmap(correlation, config.visuals),
-            use_container_width=True,
+            width="stretch",
             config={"displayModeBar": False},
             theme=None,
         )
@@ -230,7 +231,7 @@ def main() -> None:
             st.subheader("Strongest Pairs")
             st.dataframe(
                 strongest_pairs,
-                use_container_width=True,
+                width="stretch",
                 hide_index=True,
                 height=420,
             )
@@ -238,7 +239,7 @@ def main() -> None:
             st.subheader("Weakest Pairs")
             st.dataframe(
                 weakest_pairs,
-                use_container_width=True,
+                width="stretch",
                 hide_index=True,
                 height=420,
             )
@@ -259,7 +260,7 @@ def main() -> None:
                 y_label="Correlation",
                 visuals=config.visuals,
             ),
-            use_container_width=True,
+            width="stretch",
             config={"displayModeBar": False},
             theme=None,
         )
@@ -308,14 +309,14 @@ def main() -> None:
                     y_label="Correlation",
                     visuals=config.visuals,
                 ),
-                use_container_width=True,
+                width="stretch",
                 config={"displayModeBar": False},
                 theme=None,
             )
 
             snapshot = returns[[left, right]].tail(15).copy()
             snapshot.index = snapshot.index.strftime("%Y-%m-%d")
-            st.dataframe(snapshot, use_container_width=True)
+            st.dataframe(snapshot, width="stretch")
 
     with cointegration_tab:
         st.subheader("Top 10 Cointegrated Pairs")
@@ -340,7 +341,7 @@ def main() -> None:
             universe_view["zero_return_days"] = universe_view["ticker"].map(zero_share)
         st.dataframe(
             universe_view,
-            use_container_width=True,
+            width="stretch",
             hide_index=True,
             column_config={
                 "zero_return_days": st.column_config.NumberColumn(
@@ -391,7 +392,7 @@ def main() -> None:
                 for name, path in {**required, **{k: v for k, v in optional.items() if v is not None}}.items()
             ]
         )
-        st.dataframe(outputs, use_container_width=True, hide_index=True)
+        st.dataframe(outputs, width="stretch", hide_index=True)
         st.subheader("Metadata")
         st.json(metadata, expanded=False)
 
@@ -667,7 +668,7 @@ def _render_correlation_changes(
     display_changes = _filter_correlation_changes(changes, focus, top_n)
     st.plotly_chart(
         _build_correlation_change_chart(display_changes, focus, visuals),
-        use_container_width=True,
+        width="stretch",
         config={"displayModeBar": False},
         theme=None,
     )
@@ -682,7 +683,7 @@ def _render_correlation_changes(
     )
     for column in ["prior_corr", "current_corr", "change", "abs_change"]:
         display_table[column] = display_table[column].round(3)
-    st.dataframe(display_table, use_container_width=True, hide_index=True, height=320)
+    st.dataframe(display_table, width="stretch", hide_index=True, height=320)
 
     detail_pair = st.selectbox(
         "Pair Change Detail",
@@ -872,7 +873,7 @@ def _render_cointegration_tab(
             display_table[column] = display_table[column].round(decimals)
     st.dataframe(
         display_table,
-        use_container_width=True,
+        width="stretch",
         hide_index=True,
         height=420,
     )
@@ -889,7 +890,7 @@ def _render_cointegration_tab(
     with detail_left:
         st.plotly_chart(
             _build_spread_chart(pair_history, selected_pair, pair_row, visuals),
-            use_container_width=True,
+            width="stretch",
             config={"displayModeBar": False},
             theme=None,
         )
@@ -1108,7 +1109,7 @@ def _render_rerun_panel(config, config_path: Path, root: Path, is_etf_run: bool)
         )
         right.markdown("<div style='height:1.75rem'></div>", unsafe_allow_html=True)
         clicked = right.button(
-            "Re-run analysis", type="primary", use_container_width=True, disabled=running
+            "Re-run analysis", type="primary", width="stretch", disabled=running
         )
         st.caption(
             "Re-fetches prices and recomputes returns, the correlation matrix, cointegration pairs and "

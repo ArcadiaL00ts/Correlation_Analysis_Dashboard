@@ -128,15 +128,7 @@ def main() -> None:
     )
 
     result = fetch_prices(config, holdings["ticker"].tolist())
-    prices = result.prices
-    # yfinance batch downloads sometimes return an empty column for a valid symbol; retry those once.
-    empty = [t for t in holdings["ticker"] if t not in prices.columns or prices[t].notna().sum() == 0]
-    if empty:
-        retry = fetch_prices(config, empty).prices
-        for ticker in empty:
-            if ticker in retry.columns and retry[ticker].notna().any():
-                prices = prices.drop(columns=ticker, errors="ignore").join(retry[ticker], how="outer")
-        result.metadata["retried_tickers"] = empty
+    prices = result.prices  # fetch_prices already retried any blank symbols once
     prices = prices.ffill(limit=CROSS_EXCHANGE_FFILL_LIMIT)
 
     # Drop holdings Yahoo cannot price (bad symbol mapping, recent IPO) rather than failing the run.

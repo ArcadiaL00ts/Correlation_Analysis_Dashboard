@@ -32,6 +32,9 @@ class ConfigureTlsTests(unittest.TestCase):
         for name in (*net.CA_ENV_VARS, net.OVERRIDE_ENV, net.SKIP_PROBE_ENV):
             os.environ.pop(name, None)
         net._status = None
+        log_patch = mock.patch.object(net, "_log")
+        log_patch.start()
+        self.addCleanup(log_patch.stop)
 
     def tearDown(self) -> None:
         self._env.stop()

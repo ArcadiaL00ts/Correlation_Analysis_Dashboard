@@ -2,7 +2,6 @@ from __future__ import annotations
 
 import json
 import os
-import subprocess
 import sys
 from pathlib import Path
 
@@ -18,6 +17,7 @@ from nasdaq_correlation_dashboard.correlation import (
     rolling_average_correlation,
 )
 from nasdaq_correlation_dashboard.cli import period_label
+from nasdaq_correlation_dashboard import rerun_job
 from nasdaq_correlation_dashboard.net import configure_tls
 from nasdaq_correlation_dashboard.settings import load_config
 from nasdaq_correlation_dashboard.theme import inject_styles, plotly_theme, resolve_theme_tokens
@@ -1065,9 +1065,16 @@ def _status_card(title: str, lines: list[str]) -> str:
     )
 
 
+def _rerun_enabled(config) -> bool:
+    return bool(config.payload.get("dashboard", {}).get("enable_rerun", True))
+
+
 def _render_rerun_panel(config, config_path: Path, root: Path, is_etf_run: bool) -> None:
-    """Pick new lookbacks and regenerate the artifacts through the pipeline script, then reload."""
+    """Pick new lookbacks and regenerate the artifacts in a background job (see rerun_job.py)."""
+    if not _rerun_enabled(config):
+        return
     metadata_path = config.paths["metadata_json"]
+    job_dir = metadata_path.parent
     pairs_metadata_path = config.paths.get("pairs_metadata_json")
     current = _read_optional_json(metadata_path if metadata_path.exists() else None)
     current_pairs = _read_optional_json(pairs_metadata_path)
@@ -1075,10 +1082,12 @@ def _render_rerun_panel(config, config_path: Path, root: Path, is_etf_run: bool)
     pair_choices = [str(c) for c in config.pairs_trading.get("prompt_choices", [])] or ["1y"]
     price_now = str(current.get("prices", {}).get("period") or config.history["period"])
     pair_now = str(current_pairs.get("history_period") or config.pairs_trading.get("history_period", "1y"))
+    job = rerun_job.read_status(job_dir)
+    running = job.get("state") == "running"
 
     with st.expander(
         f"Lookback · price history {period_label(price_now)} · cointegration {period_label(pair_now)}",
-        expanded=False,
+        expanded=running,
     ):
         left, mid, right = st.columns([1, 1, 0.8])
         price_period = left.selectbox(
@@ -1087,6 +1096,7 @@ def _render_rerun_panel(config, config_path: Path, root: Path, is_etf_run: bool)
             index=price_choices.index(price_now) if price_now in price_choices else 0,
             format_func=period_label,
             key="rerun_price_period",
+            disabled=running,
         )
         pair_period = mid.selectbox(
             "Cointegration lookback",
@@ -1094,65 +1104,113 @@ def _render_rerun_panel(config, config_path: Path, root: Path, is_etf_run: bool)
             index=pair_choices.index(pair_now) if pair_now in pair_choices else 0,
             format_func=period_label,
             key="rerun_pair_period",
+            disabled=running,
         )
         right.markdown("<div style='height:1.75rem'></div>", unsafe_allow_html=True)
-        clicked = right.button("Re-run analysis", type="primary", use_container_width=True)
+        clicked = right.button(
+            "Re-run analysis", type="primary", use_container_width=True, disabled=running
+        )
         st.caption(
             "Re-fetches prices and recomputes returns, the correlation matrix, cointegration pairs and "
-            "both workbooks for the selected windows. The current run is kept as the prior-run snapshot. "
-            "Short windows are noisy: 1w gives only ~4 daily returns per pair, and cointegration needs at "
-            "least 20 overlapping days, so it starts at 1m."
+            "both workbooks for the selected windows in the background. The current run is kept as the "
+            "prior-run snapshot, and stays in place if the re-run fails. Short windows are noisy: 1w gives "
+            "only ~4 daily returns per pair, and cointegration needs at least 20 overlapping days, so it "
+            "starts at 1m."
         )
-        if not clicked:
-            return
 
-        if is_etf_run:
-            command = [
-                sys.executable,
-                str(root / "scripts" / "run_etf_correlation.py"),
-                "--etf",
-                str(config.universe_policy["index_symbol"]),
-            ]
-            holdings = current.get("universe", {}).get("official_source", {}).get("path")
-            if holdings and Path(holdings).exists():
-                command += ["--holdings", holdings]
-        else:
-            command = [
-                sys.executable,
-                str(root / "scripts" / "update_dashboard.py"),
-                "--config",
-                str(config_path),
-            ]
-        command += ["--history-period", price_period, "--pairs-history-period", pair_period]
-
-        env = os.environ.copy()
-        src = str(root / "src")
-        env["PYTHONPATH"] = src + (os.pathsep + env["PYTHONPATH"] if env.get("PYTHONPATH") else "")
-        # The themed spinner renders as a ring (theme.py), so the progress message sits beside it.
-        status = st.empty()
-        status.info(
-            f"Re-running with {period_label(price_period)} of prices and a {period_label(pair_period)} "
-            "cointegration window. "
-            "This usually takes a minute or two."
-        )
-        with st.spinner(""):
-            completed = subprocess.run(
-                command,
+        if clicked:
+            started, message = rerun_job.start_job(
+                job_dir,
+                _rerun_command(config, config_path, root, is_etf_run, current, price_period, pair_period),
                 cwd=root,
-                env=env,
-                stdin=subprocess.DEVNULL,
-                capture_output=True,
-                text=True,
-                timeout=1800,
-                check=False,
+                env=_rerun_env(root),
+                labels={"price_period": price_period, "pair_period": pair_period},
             )
-        status.empty()
-        if completed.returncode != 0:
-            st.error("Re-run failed; the previous artifacts are unchanged where the run stopped early.")
-            st.code((completed.stderr or completed.stdout)[-3000:], language="text")
-            return
-        st.cache_data.clear()
-        st.rerun()
+            if not started:
+                st.warning(message)
+            else:
+                st.rerun()
+
+        if running:
+            st.fragment(run_every="2s")(_render_rerun_progress)(str(job_dir))
+        else:
+            _render_rerun_result(job, job_dir)
+
+
+def _rerun_command(
+    config,
+    config_path: Path,
+    root: Path,
+    is_etf_run: bool,
+    current: dict,
+    price_period: str,
+    pair_period: str,
+) -> list[str]:
+    if is_etf_run:
+        command = [
+            sys.executable,
+            str(root / "scripts" / "run_etf_correlation.py"),
+            "--etf",
+            str(config.universe_policy["index_symbol"]),
+        ]
+        holdings = current.get("universe", {}).get("official_source", {}).get("path")
+        if holdings and Path(holdings).exists():
+            command += ["--holdings", holdings]
+    else:
+        command = [sys.executable, str(root / "scripts" / "update_dashboard.py"), "--config", str(config_path)]
+    return command + ["--history-period", price_period, "--pairs-history-period", pair_period]
+
+
+def _rerun_env(root: Path) -> dict[str, str]:
+    env = os.environ.copy()
+    src = str(root / "src")
+    env["PYTHONPATH"] = src + (os.pathsep + env["PYTHONPATH"] if env.get("PYTHONPATH") else "")
+    env["PYTHONUNBUFFERED"] = "1"  # so the progress panel's log tail updates while the job runs
+    return env
+
+
+def _render_rerun_progress(job_dir_text: str) -> None:
+    """Polled every 2s while a job runs; reloads the whole app once it finishes."""
+    job_dir = Path(job_dir_text)
+    job = rerun_job.read_status(job_dir)
+    if job.get("state") != "running":
+        st.rerun(scope="app")
+        return
+    started = pd.Timestamp(job.get("started_at")) if job.get("started_at") else None
+    elapsed = (
+        f" · {int((pd.Timestamp.now(tz='UTC') - started).total_seconds())}s elapsed" if started is not None else ""
+    )
+    st.info(
+        f"Re-running with {period_label(str(job.get('price_period', '?')))} of prices and a "
+        f"{period_label(str(job.get('pair_period', '?')))} cointegration window{elapsed}. "
+        "This usually takes a minute or two; you can reload or leave the page."
+    )
+    tail = rerun_job.log_tail(job_dir, lines=8)
+    if tail:
+        st.code(tail, language="text")
+    if st.button("Cancel re-run", key="rerun_cancel"):
+        rerun_job.cancel_job(job_dir)
+        st.rerun(scope="app")
+
+
+def _render_rerun_result(job: dict, job_dir: Path) -> None:
+    state = job.get("state")
+    if state not in {"succeeded", "failed", "cancelled"}:
+        return
+    finished = job.get("finished_at", "")
+    if state == "succeeded":
+        st.success(f"Last re-run finished at {finished}.")
+        return
+    if state == "cancelled":
+        st.warning(f"Last re-run was cancelled at {finished}; the artifacts shown are from the run before it.")
+        return
+    st.error(
+        f"Last re-run failed at {finished}. The artifacts shown are from the last successful run."
+        + (f" {job['error']}" if job.get("error") else "")
+    )
+    tail = rerun_job.log_tail(job_dir, lines=40)
+    if tail:
+        st.code(tail[-3000:], language="text")
 
 
 def _read_optional_csv(

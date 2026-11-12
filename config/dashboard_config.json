@@ -110,6 +110,9 @@
     "pairs_metadata_json": "data/processed/latest_pairs_cointegration_metadata.json",
     "pairs_workbook": "exports/pairs_cointegration_analysis.xlsx"
   },
+  "dashboard": {
+    "enable_rerun": true
+  },
   "visuals": {
     "page_title": "NASDAQ-100 Top-50 Correlation Research",
     "heatmap_min_color": "#7D3A4A",

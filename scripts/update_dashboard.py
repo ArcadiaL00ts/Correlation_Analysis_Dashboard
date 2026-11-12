@@ -1,7 +1,6 @@
 from __future__ import annotations
 
 import argparse
-import shutil
 import sys
 from pathlib import Path
 
@@ -12,6 +11,7 @@ if str(SRC_ROOT) not in sys.path:
 
 from nasdaq_correlation_dashboard.cli import resolve_history_period as _resolve_period
 from nasdaq_correlation_dashboard.cli import scaled_minimum_rows, scaled_window
+from nasdaq_correlation_dashboard.atomic_io import copy_file, write_csv
 from nasdaq_correlation_dashboard.correlation import build_artifacts
 from nasdaq_correlation_dashboard.excel_export import export_workbook
 from nasdaq_correlation_dashboard.pairs_cointegration import (
@@ -46,7 +46,7 @@ def snapshot_previous_run(paths: dict[str, Path]) -> None:
         if current_path is None or previous_path is None or not current_path.exists():
             continue
         previous_path.parent.mkdir(parents=True, exist_ok=True)
-        shutil.copy2(current_path, previous_path)
+        copy_file(current_path, previous_path)
 
 
 def parse_args() -> argparse.Namespace:
@@ -152,9 +152,9 @@ def main() -> None:
 
     write_universe(selection.universe, paths["universe_csv"])
     paths["raw_prices_csv"].parent.mkdir(parents=True, exist_ok=True)
-    artifacts.prices.to_csv(paths["raw_prices_csv"])
-    artifacts.returns.to_csv(paths["returns_csv"])
-    artifacts.correlation.to_csv(paths["correlation_csv"])
+    write_csv(artifacts.prices, paths["raw_prices_csv"])
+    write_csv(artifacts.returns, paths["returns_csv"])
+    write_csv(artifacts.correlation, paths["correlation_csv"])
     export_workbook(artifacts, config, paths["excel_workbook"])
 
     export_pairs_workbook(pair_artifacts, paths["pairs_workbook"])

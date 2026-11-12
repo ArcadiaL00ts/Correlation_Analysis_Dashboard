@@ -10,6 +10,7 @@ import pandas as pd
 import requests
 
 from .settings import DashboardConfig, load_config
+from .atomic_io import write_csv
 
 
 USER_AGENT = (
@@ -217,7 +218,7 @@ def apply_history_coverage(
 
 def write_universe(universe: pd.DataFrame, destination) -> None:
     destination.parent.mkdir(parents=True, exist_ok=True)
-    universe.to_csv(destination, index=False)
+    write_csv(universe, destination, index=False)
 
 
 def refresh_universe(config_path: str | Path, top_n: int = 50) -> dict[str, Any]:

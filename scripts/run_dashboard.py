@@ -12,27 +12,52 @@ PROJECT_ROOT = Path(__file__).resolve().parents[1]
 SRC_ROOT = PROJECT_ROOT / "src"
 
 
-def _cleanup_stale_dashboard_processes(app_path: Path) -> None:
-    if sys.platform != "win32":
-        return
-    command = (
-        "$self = $PID; "
-        "Get-CimInstance Win32_Process | "
-        "Where-Object { "
-        "$_.Name -eq 'python.exe' -and "
-        "$_.ProcessId -ne $self -and "
-        "$_.CommandLine -like '*streamlit*' -and "
-        "$_.CommandLine -like '*nasdaq_correlation_dashboard*' -and "
-        "$_.CommandLine -like '*dashboard.py*' "
-        "} | "
-        "ForEach-Object { Stop-Process -Id $_.ProcessId -Force -ErrorAction SilentlyContinue }"
-    )
-    subprocess.run(
-        ["powershell", "-NoProfile", "-Command", command],
-        check=False,
-        capture_output=True,
-        text=True,
-    )
+def _listening_pids(port: int) -> list[int]:
+    """PIDs listening on ``port`` (best effort; empty if the OS tool is unavailable)."""
+    if sys.platform == "win32":
+        command = (
+            f"Get-NetTCPConnection -LocalPort {port} -State Listen -ErrorAction SilentlyContinue | "
+            "Select-Object -ExpandProperty OwningProcess -Unique"
+        )
+        result = subprocess.run(
+            ["powershell", "-NoProfile", "-Command", command], capture_output=True, text=True, check=False
+        )
+    elif shutil.which("lsof"):
+        result = subprocess.run(
+            ["lsof", "-t", f"-iTCP:{port}", "-sTCP:LISTEN"], capture_output=True, text=True, check=False
+        )
+    else:
+        return []
+    return sorted({int(line) for line in result.stdout.split() if line.strip().isdigit()})
+
+
+def _command_line(pid: int) -> str:
+    if sys.platform == "win32":
+        command = f"(Get-CimInstance Win32_Process -Filter 'ProcessId={pid}').CommandLine"
+        result = subprocess.run(
+            ["powershell", "-NoProfile", "-Command", command], capture_output=True, text=True, check=False
+        )
+    else:
+        result = subprocess.run(["ps", "-o", "command=", "-p", str(pid)], capture_output=True, text=True, check=False)
+    return result.stdout.strip()
+
+
+def _free_port(port: int) -> None:
+    """Stop an earlier copy of this dashboard on ``port``; refuse to touch anything else."""
+    for pid in _listening_pids(port):
+        if pid == os.getpid():
+            continue
+        command_line = _command_line(pid)
+        if "streamlit" in command_line and "nasdaq_correlation_dashboard" in command_line:
+            print(f"Stopping the previous dashboard on port {port} (PID {pid}).")
+            if sys.platform == "win32":
+                subprocess.run(["taskkill", "/PID", str(pid), "/T", "/F"], capture_output=True, check=False)
+            else:
+                subprocess.run(["kill", str(pid)], capture_output=True, check=False)
+        else:
+            raise SystemExit(
+                f"Port {port} is in use by another program (PID {pid}). Choose a different one with --port."
+            )
 
 
 def main() -> None:
@@ -41,12 +66,17 @@ def main() -> None:
         "--config",
         help="Alternate config to display, e.g. data/etf/TAN/config.json from run_etf_correlation.py.",
     )
+    parser.add_argument(
+        "--port",
+        type=int,
+        default=int(os.environ.get("DASHBOARD_PORT", "8505").strip() or "8505"),
+        help="Port to serve on (default 8505, or DASHBOARD_PORT). Only a dashboard already on this port is restarted.",
+    )
     args = parser.parse_args()
     streamlit = shutil.which("streamlit")
     app_path = SRC_ROOT / "nasdaq_correlation_dashboard" / "dashboard.py"
-    _cleanup_stale_dashboard_processes(app_path)
-
-    port = os.environ.get("DASHBOARD_PORT", "8505").strip() or "8505"
+    _free_port(args.port)
+    port = str(args.port)
     env = os.environ.copy()
     existing = env.get("PYTHONPATH", "")
     env["PYTHONPATH"] = str(SRC_ROOT) if not existing else f"{SRC_ROOT}{os.pathsep}{existing}"

@@ -47,10 +47,10 @@ def fetch_prices(config: DashboardConfig, tickers: list[str]) -> PriceLoadResult
     raise DataSourceError(f"Unsupported provider: {provider}")
 
 
-def _fetch_from_yfinance(config: DashboardConfig, tickers: list[str]) -> PriceLoadResult:
+def _download_yfinance_field(tickers: list[str], history: dict[str, Any], price_field: str) -> pd.DataFrame:
+    """One batched yf.download, reduced to ``price_field`` with one column per ticker."""
     import yfinance as yf
 
-    history = config.history
     raw = yf.download(
         tickers=tickers,
         period=history["period"],
@@ -60,28 +60,48 @@ def _fetch_from_yfinance(config: DashboardConfig, tickers: list[str]) -> PriceLo
         progress=False,
         threads=True,
     )
-    if raw.empty:
-        raise DataSourceError("yfinance returned an empty dataset.")
-
-    price_field = config.price_source["price_field"]
+    if raw is None or raw.empty:
+        return pd.DataFrame()
     if isinstance(raw.columns, pd.MultiIndex):
         if price_field not in raw.columns.get_level_values(0):
             raise DataSourceError(f"Expected field '{price_field}' in yfinance dataset.")
-        prices = raw[price_field]
-    else:
-        prices = raw.rename(columns={price_field: tickers[0]})[[tickers[0]]]
+        return _normalize_frame(raw[price_field])
+    if price_field not in raw.columns:
+        raise DataSourceError(f"Expected field '{price_field}' in yfinance dataset.")
+    return _normalize_frame(raw[[price_field]].rename(columns={price_field: tickers[0]}))
 
-    prices = _normalize_frame(prices)
-    return PriceLoadResult(
-        prices=prices,
-        metadata={
-            "provider": "yfinance",
-            "price_field": price_field,
-            "period": history["period"],
-            "interval": history["interval"],
-            "tickers_requested": tickers,
-        },
-    )
+
+def _empty_tickers(prices: pd.DataFrame, tickers: list[str]) -> list[str]:
+    return [t for t in tickers if t.upper() not in prices.columns or prices[t.upper()].notna().sum() == 0]
+
+
+def _fetch_from_yfinance(config: DashboardConfig, tickers: list[str]) -> PriceLoadResult:
+    history = config.history
+    price_field = config.price_source["price_field"]
+    prices = _download_yfinance_field(tickers, history, price_field)
+    if prices.empty:
+        raise DataSourceError("yfinance returned an empty dataset.")
+
+    metadata: dict[str, Any] = {
+        "provider": "yfinance",
+        "price_field": price_field,
+        "period": history["period"],
+        "interval": history["interval"],
+        "tickers_requested": tickers,
+    }
+    # Batch downloads occasionally return an all-blank column for a valid symbol (seen for FSLR
+    # and RUN). Retry those symbols once in a separate request before anyone validates the frame.
+    empty = _empty_tickers(prices, tickers)
+    if empty:
+        retry = _download_yfinance_field(empty, history, price_field)
+        recovered = [t for t in empty if t not in _empty_tickers(retry, [t])] if not retry.empty else []
+        if recovered:
+            upper = [t.upper() for t in recovered]
+            prices = prices.drop(columns=upper, errors="ignore").join(retry[upper], how="outer")
+        metadata["retried_tickers"] = empty
+        metadata["retry_recovered_tickers"] = recovered
+
+    return PriceLoadResult(prices=prices, metadata=metadata)
 
 
 def _fetch_from_csv_directory(config: DashboardConfig, tickers: list[str]) -> PriceLoadResult:

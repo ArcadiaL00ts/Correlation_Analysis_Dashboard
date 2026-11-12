@@ -65,6 +65,13 @@ def pid_alive(pid: int | None) -> bool:
         finally:
             kernel32.CloseHandle(handle)
     try:
+        # A finished child we launched stays a zombie (and answers kill(0)) until reaped.
+        reaped, _ = os.waitpid(int(pid), os.WNOHANG)
+        if reaped == int(pid):
+            return False
+    except ChildProcessError:
+        pass  # not our child (or already reaped)
+    try:
         os.kill(int(pid), 0)
     except ProcessLookupError:
         return False

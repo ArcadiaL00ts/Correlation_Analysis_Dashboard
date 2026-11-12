@@ -16,3 +16,7 @@ data/manual_universe/*.csv
 data/manual_universe/*.json
 # Local planning notes
 docs/plans/
+# Not published: third-party skill, personal scripts, generated design reference
+.codex/
+tradingview/
+prompts/ui_ux_design_system_reference.md

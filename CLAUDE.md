@@ -98,7 +98,6 @@ commands/
 tests/                             ← unittest suite (py -3 -m unittest discover tests)
 prompts/                           ← Prompt templates
 docs/presentations/                ← Slide decks (gitignored *.pptx)
-tradingview/pinescript/            ← Standalone TradingView Pine scripts (not used by the dashboard)
 data/processed/                    ← Generated CSV/JSON artifacts
 exports/                           ← Generated Excel workbooks
 ```

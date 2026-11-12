@@ -1,0 +1,5 @@
+version: 1
+interface:
+  display_name: Dashboard UI
+  short_description: Build and polish the Streamlit tabs, Plotly charts, and theme of the correlation dashboard.
+  default_prompt: Update the NASDAQ correlation dashboard UI while keeping the heatmap locked to [-1, 1], the price-action panel above it, time-series axes unclipped, and captions readable on the dark theme.

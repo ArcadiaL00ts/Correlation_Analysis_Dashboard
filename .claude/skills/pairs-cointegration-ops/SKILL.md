@@ -1,6 +1,6 @@
 ---
 name: pairs-cointegration-ops
-description: Create, run, or update the repo's market-neutral pairs-trading cointegration workflow. Use when Codex needs to scan local equity price data for cointegrated pairs, run Engle-Granger and residual ADF tests, compute hedge ratios and spread z-scores, rank qualified pairs, install the minimal quant dependencies, or export the ranked Excel workbook.
+description: Run or change the market-neutral pairs-trading cointegration workflow for the NASDAQ-100 dashboard. Use when the user asks to find or rank cointegrated pairs, run Engle-Granger or residual ADF tests, compute hedge ratios or spread z-scores, change qualification thresholds or the cointegration history window, regenerate the pairs workbook or pairs CSV/JSON artifacts, or edit scripts/run_pairs_cointegration.py or pairs_cointegration.py.
 ---
 
 # Pairs Cointegration Ops
@@ -14,7 +14,7 @@ Use the local processed price data to find statistically cointegrated equity pai
 1. Read `codex.md` before changing the workflow.
 2. Inspect `data/processed/latest_prices.csv` first unless the user explicitly points to another local file.
 3. Use `data/processed/latest_universe.csv` when you need the intended ticker universe or display order.
-4. Ensure `statsmodels` is installed before running the analysis. Reuse the existing `openpyxl`, `pandas`, `numpy`, and `scipy` packages unless there is a clear gap.
+4. Ensure `statsmodels` is installed before running the analysis. Reuse the existing `openpyxl`, `pandas` and `numpy` packages (`scipy` arrives with `statsmodels`) unless there is a clear gap.
 5. Treat the cointegration history window as configurable. Use the `pairs_trading.history_period` setting by default and allow explicit CLI overrides when the user wants a different test horizon.
 6. Run `scripts/run_pairs_cointegration.py` for the actual analysis and workbook export.
 7. Export rejected pairs as well as qualified pairs; do not hide failed diagnostics.

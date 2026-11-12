@@ -1,6 +1,6 @@
 ---
 name: correlation-delta-tracking
-description: Preserve prior-run correlation snapshots and surface the biggest pairwise correlation changes in the NASDAQ-100 dashboard. Use when adding or maintaining prior-vs-current correlation comparisons, wiring refresh artifacts for previous runs, debugging why the correlation delta panel is empty or stale, or extending the Streamlit UI that shows the largest increases, decreases, or absolute moves from the prior refresh.
+description: Maintain the prior-run vs current-run correlation comparison in the NASDAQ-100 dashboard. Use when the user asks about the biggest correlation changes since the last refresh, when the correlation-delta panel is empty or stale, when previous_* snapshot artifacts need wiring or fixing, or when extending the UI that shows the largest increases, decreases, or absolute moves.
 ---
 
 # Correlation Delta Tracking

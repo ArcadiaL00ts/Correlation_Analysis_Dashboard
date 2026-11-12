@@ -9,7 +9,7 @@ SRC_ROOT = PROJECT_ROOT / "src"
 if str(SRC_ROOT) not in sys.path:
     sys.path.insert(0, str(SRC_ROOT))
 
-from nasdaq_correlation_dashboard.universe_fetcher import refresh_universe
+from nasdaq_correlation_dashboard.universe import refresh_universe
 
 
 def parse_args() -> argparse.Namespace:
@@ -32,7 +32,7 @@ def parse_args() -> argparse.Namespace:
 
 def main() -> None:
     args = parse_args()
-    result = refresh_universe(args.config, top_n=args.top_n, dry_run=True)
+    result = refresh_universe(args.config, top_n=args.top_n)
 
     print(f"Resolved tickers ({len(result['proposed_tickers'])}):")
     for index, ticker in enumerate(result["proposed_tickers"], 1):

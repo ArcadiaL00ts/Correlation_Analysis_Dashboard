@@ -8,8 +8,8 @@ from openpyxl.formatting.rule import ColorScaleRule
 from openpyxl.styles import Alignment, Font, PatternFill
 from openpyxl.utils import get_column_letter
 
-from nasdaq_correlation_dashboard.correlation import CorrelationArtifacts, ranked_pairs
-from nasdaq_correlation_dashboard.settings import DashboardConfig
+from .correlation import CorrelationArtifacts, ranked_pairs
+from .settings import DashboardConfig
 
 
 HEADER_FILL = PatternFill(fill_type="solid", fgColor="10243E")

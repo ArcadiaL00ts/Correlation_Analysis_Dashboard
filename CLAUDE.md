@@ -3,8 +3,8 @@
 ## Project Identity
 
 **Name:** NASDAQ-100 Top-50 Correlation Dashboard
-**Stack:** Python 3.11+ · Streamlit · Plotly · yfinance · requests · openpyxl · scikit-learn · scipy · statsmodels
-**Purpose:** Research-grade correlation analysis for the top 50 NASDAQ-100 constituents with explicit universe provenance, guarded fallback logic, cointegration research, and advanced quant analytics (PCA, eigenvalues, regime detection, rolling correlations, absorption ratio).
+**Stack:** Python 3.11+ · Streamlit · Plotly · yfinance · requests · openpyxl · statsmodels
+**Purpose:** Research-grade correlation analysis for the top 50 NASDAQ-100 constituents with explicit universe provenance, guarded fallback logic, rolling and prior-run correlation research, and Engle-Granger pairs cointegration.
 
 ## Current Operating Rules
 
@@ -21,7 +21,7 @@
 - **Config-driven:** All settings flow from `dashboard_config.json`.
 - **Frozen dataclasses** for config wrappers (`DashboardConfig` in `settings.py`).
 - **Provider abstraction:** Data sources are isolated in `sources.py` with fallback chain. Universe resolution is in `universe.py` with multi-source ranking.
-- **Local computation only:** Returns, correlations, PCA, and cointegration tests are computed locally.
+- **Local computation only:** Returns, correlations, and cointegration tests are computed locally.
 - **Metadata tracking:** Every artifact includes provenance metadata (source, timestamps, fallback reasons).
 - **Defensive validation:** Fail fast on data quality issues (missing tickers, insufficient rows, excessive NaN ratio, insufficient ranked constituents).
 
@@ -32,19 +32,26 @@
 - Use `pathlib.Path` for all file operations.
 - Use `frozen=True` on config-related dataclasses.
 - Import heavy third-party libraries inside functions (e.g., `import yfinance as yf` inside fetch functions).
+- Use relative imports inside the package. Exception: `dashboard.py` runs under Streamlit as a script and must keep absolute `nasdaq_correlation_dashboard.*` imports.
+- Shared CLI helpers (history-period prompt) live in `cli.py`; do not re-implement them in scripts.
 
 ## Visual Identity
 
+Values below are the defaults in `theme.py` (`TERMINAL_VISUAL_DEFAULTS`); `config/dashboard_config.json` → `visuals` overrides them at runtime.
+
 | Element | Value |
 |---------|-------|
-| Heatmap min color (-1) | `#570B12` (dark red) |
-| Heatmap mid color (0) | `#E7D9C8` (warm neutral) |
-| Heatmap max color (+1) | `#0D8F61` (green) |
-| Background gradient | `#09111C` → `#132739` → `#071019` |
-| Panel border | `rgba(255,255,255,0.10)` |
-| Heading font | Cormorant Garamond, serif |
-| Body font | IBM Plex Sans, sans-serif |
-| Text color | `#F7F1E8` (warm off-white) |
+| Heatmap min color (-1) | `#7D3A4A` (muted red) |
+| Heatmap mid color (0) | `#DCE7F6` (pale neutral) |
+| Heatmap max color (+1) | `#1C8BC4` (blue) |
+| Background gradient | `#071222` → `#152B47` → `#030B15` (150°) |
+| Panel background | `rgba(10, 22, 40, 0.78)` |
+| Panel border | `rgba(122,157,205,0.34)` |
+| Accents | cyan `#58C8FF`, secondary `#7BA9FF`, success `#22C55E`, danger `#FB7185` |
+| Hero / heading font | Bebas Neue |
+| UI / body font | Sora |
+| Mono font (charts, tables) | JetBrains Mono |
+| Text color | `#EAF2FF` primary, `#A4B8D7` muted |
 | Header fill (Excel) | `#10243E` with white bold text |
 
 These values must never be changed without explicit user approval.
@@ -54,24 +61,23 @@ These values must never be changed without explicit user approval.
 ```
 CLAUDE.md                          ← Authoritative Claude Code instructions (this file)
 codex.md                           ← Human-readable operating guide + troubleshooting log
+pyproject.toml                     ← Package metadata (src layout); requirements.txt kept for the scripts
 config/dashboard_config.json       ← Single source of truth for all settings
 
 src/nasdaq_correlation_dashboard/
-  settings.py                      ← DashboardConfig dataclass
-  universe.py                      ← Live universe resolver (Nasdaq endpoint → QQQM → Yahoo Finance)
-  universe_fetcher.py              ← Supplemental QQQM holdings fetcher for preview/refresh
+  settings.py                      ← DashboardConfig dataclass + load_config
+  universe.py                      ← Live universe resolver (Nasdaq endpoint → QQQM → Yahoo Finance) + refresh_universe preview
   sources.py                       ← Price data fetching (yfinance + CSV fallback)
-  correlation.py                   ← Return/correlation computation, ranked_pairs, rolling avg corr
-  analytics.py                     ← PCA, eigenvalues, rolling pairwise correlations, regime detection,
-                                     correlation stability, absorption ratio
-  clustering.py                    ← Hierarchical/sector ordering, dendrogram building
-  visualizations.py                ← Plotly figure builders (heatmap, scree, biplot, rolling, regimes)
-  pairs_cointegration.py           ← Engle-Granger cointegration analysis, spread z-scores
-  dashboard.py                     ← Streamlit multi-tab GUI (Heatmap, Rolling, Cointegration, Universe, Run Status)
+  correlation.py                   ← Return/correlation computation, ranked_pairs, rolling avg corr, prior-run deltas
+  pairs_cointegration.py           ← Engle-Granger cointegration analysis, spread z-scores, pairs workbook
   excel_export.py                  ← openpyxl workbook export with conditional formatting
+  cli.py                           ← Shared history-period resolver for the pipeline scripts
+  theme.py                         ← Theme tokens, Plotly palette, injected Streamlit CSS
+  dashboard.py                     ← Streamlit multi-tab GUI (Heatmap, Rolling, Cointegration, Universe, Run Status)
 
 scripts/
   update_dashboard.py              ← Full pipeline orchestrator (universe → prices → correlation → pairs → export)
+  run_pairs_cointegration.py       ← Standalone pairs cointegration run on local processed prices
   run_dashboard.py                 ← Streamlit launcher
   refresh_universe.py              ← Preview resolved universe (read-only)
 
@@ -79,17 +85,17 @@ commands/
   update-dashboard.ps1             ← Windows PowerShell wrapper for update
   open-dashboard.ps1               ← Windows PowerShell wrapper for dashboard launch
 
-skills/
-  nasdaq-correlation-ops/          ← General dashboard maintenance and orchestration
-  dashboard-build/                 ← GUI layout, tabs, CSS styling
-  dashboard-chart-polish/          ← Axis spacing, anti-clipping rules, heatmap price-action panel
-  data-refresh/                    ← Price fetching, universe resolution, pipeline issues
-  troubleshooting/                 ← Diagnostics: Python, deps, data files, config
-  visualization-update/            ← Chart modifications, Plotly figures, color schemes
-  nasdaq-correlation-troubleshooting/ ← Focused troubleshooting skill
+.claude/skills/                    ← Project skills (canonical); skills/ is a junction to here for Codex
+  nasdaq-correlation-ops/          ← Refresh pipeline, universe/price providers, artifact regeneration
+  troubleshooting/                 ← Diagnostics: environment, providers, artifacts, failure playbook
+  dashboard-ui/                    ← Streamlit tabs, Plotly charts, theme/CSS, chart-polish rules
   pairs-cointegration-ops/         ← Pairs trading cointegration workflow
+  correlation-delta-tracking/      ← Prior-run snapshots and correlation-change views
 
+tests/                             ← unittest suite (py -3 -m unittest discover tests)
 prompts/                           ← Prompt templates
+docs/presentations/                ← Slide decks (gitignored *.pptx)
+tradingview/pinescript/            ← Standalone TradingView Pine scripts (not used by the dashboard)
 data/processed/                    ← Generated CSV/JSON artifacts
 exports/                           ← Generated Excel workbooks
 ```
@@ -98,14 +104,11 @@ exports/                           ← Generated Excel workbooks
 
 | Skill | When to Use |
 |-------|-------------|
-| `nasdaq-correlation-ops` | General dashboard maintenance, full refresh cycles, coordinating across sub-skills |
-| `dashboard-build` | Build or rebuild the Streamlit GUI, modify tab layout, update CSS |
-| `dashboard-chart-polish` | Fix clipped Plotly axes, normalize section spacing, brighten helper text, or maintain the Heatmap price-action chart |
-| `data-refresh` | Refresh price data, resolve universe, recompute analytics, troubleshoot providers |
-| `troubleshooting` | Diagnose Python/dependency/data/config issues, validate artifacts |
-| `visualization-update` | Modify charts, add plot types, change color schemes, update Plotly figures |
-| `nasdaq-correlation-troubleshooting` | Focused troubleshooting for specific failure modes |
-| `pairs-cointegration-ops` | Pairs trading cointegration workflow, Engle-Granger analysis |
+| `nasdaq-correlation-ops` | Full refresh cycles, universe resolution, price providers, regenerating artifacts and workbooks |
+| `troubleshooting` | Diagnose Python/dependency/provider/artifact/config failures and log fixes |
+| `dashboard-ui` | Change tabs, Plotly figures, theme/CSS, axis spacing, the Heatmap price-action panel |
+| `pairs-cointegration-ops` | Pairs trading cointegration workflow, Engle-Granger analysis, thresholds |
+| `correlation-delta-tracking` | Prior-run vs current correlation snapshots and delta views |
 
 ## Guardrails
 
@@ -113,7 +116,7 @@ exports/                           ← Generated Excel workbooks
 2. **Never accept a universe smaller than 50 names.**
 3. **Never report success** unless universe CSV, correlation CSV, metadata JSON, and Excel workbook were produced.
 4. **Keep the heatmap locked to `[-1, 1]` domain.** Never rescale or clip.
-5. **Preserve the red-neutral-green heatmap scale** unless the user explicitly asks for a change.
+5. **Preserve the configured heatmap scale** (`heatmap_min/mid/max_color`, currently red → neutral → blue) unless the user explicitly asks for a change.
 6. **Keep the heatmap visually dominant** — full width, pair tables below, top y-axis labels not clipped.
 7. **Keep time-series axes readable** — use generous left and bottom margins plus axis-title standoffs so `Date`, `Correlation`, and `Z-score` titles stay clear of tick labels and zero lines.
 8. **Keep the Heatmap historical-price panel alive** — place it above the heatmap, default it to `QQQM`, preserve quick lookback controls for `1y`, `6m`, `3m`, and `1w`, prefer yfinance OHLC candlesticks, and fall back to refreshed local adjusted-close data when OHLC is unavailable.
@@ -130,7 +133,7 @@ When a task involves multiple independent sub-tasks, dispatch them as parallel s
 | Scenario | Parallel Agents |
 |----------|----------------|
 | Full refresh | Agent 1: resolve universe + fetch prices. Agent 2: check existing artifacts + verify config. |
-| Post-fetch analytics | Agent 1: correlation matrix + pairs. Agent 2: PCA/eigenvalues. Agent 3: rolling correlations + regimes. |
+| Post-fetch analytics | Agent 1: correlation matrix + pairs ranking. Agent 2: cointegration scan. |
 | Export | Agent 1: Excel workbook. Agent 2: CSV/JSON artifacts. Agent 3: update codex.md. |
 | Troubleshooting | Agent 1: check Python + dependencies. Agent 2: validate data files. Agent 3: verify config integrity. |
 
@@ -138,13 +141,17 @@ When a task involves multiple independent sub-tasks, dispatch them as parallel s
 
 ## Commands Reference
 
+`python` may not be on PATH on this machine; use `py -3` (the `.ps1` wrappers handle both).
+
 | Command | Purpose |
 |---------|---------|
 | `commands/update-dashboard.ps1` | Refresh all data + analytics + exports (prompts for history horizon) |
 | `commands/open-dashboard.ps1` | Launch the Streamlit dashboard |
-| `python scripts/update_dashboard.py` | Direct pipeline execution (interactive horizon prompt) |
-| `python scripts/update_dashboard.py --history-period 2y` | Pipeline with explicit history override |
-| `python scripts/refresh_universe.py` | Preview resolved universe (read-only) |
+| `py -3 scripts/update_dashboard.py` | Direct pipeline execution (interactive horizon prompt) |
+| `py -3 scripts/update_dashboard.py --history-period 2y` | Pipeline with explicit history override |
+| `py -3 scripts/run_pairs_cointegration.py` | Pairs cointegration only, on existing processed prices |
+| `py -3 scripts/refresh_universe.py` | Preview resolved universe (read-only) |
+| `py -3 -m unittest discover tests` | Run the test suite |
 | `streamlit run src/nasdaq_correlation_dashboard/dashboard.py` | Direct Streamlit launch |
 
 ## Expected Outputs
@@ -156,6 +163,7 @@ When a task involves multiple independent sub-tasks, dispatch them as parallel s
 | `data/processed/latest_returns.csv` | Computed log returns |
 | `data/processed/latest_correlation.csv` | N×N Pearson correlation matrix |
 | `data/processed/latest_metadata.json` | Full provenance metadata |
+| `data/processed/previous_{universe,correlation,metadata}.*` | Prior-run snapshots for the delta view |
 | `data/processed/latest_pairs_cointegration_all.csv` | All tested pair results |
 | `data/processed/latest_pairs_cointegration_qualified.csv` | Pairs passing thresholds |
 | `data/processed/latest_pairs_cointegration_spreads.csv` | Spread z-scores for top pairs |

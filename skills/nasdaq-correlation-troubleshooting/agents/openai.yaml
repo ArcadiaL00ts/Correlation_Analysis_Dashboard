@@ -1,5 +1,0 @@
-version: 1
-interface:
-  display_name: NASDAQ Correlation Troubleshooting
-  short_description: Diagnose and stabilize failures in the NASDAQ-100 top-50 correlation dashboard.
-  default_prompt: Diagnose the failure in the NASDAQ-100 top-50 correlation dashboard, identify whether it is universe, provider, export, or UI related, repair the durable cause, and update codex.md with the troubleshooting note.

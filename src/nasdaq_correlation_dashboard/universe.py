@@ -26,10 +26,16 @@ class UniverseSourceError(RuntimeError):
 class UniverseSelection:
     universe: pd.DataFrame
     metadata: dict[str, Any]
+    # Next-ranked names (rank target_size+1, +2, ...) used to replace members that lack history.
+    reserve: pd.DataFrame | None = None
 
     @property
     def tickers(self) -> list[str]:
         return self.universe["ticker"].tolist()
+
+    @property
+    def reserve_tickers(self) -> list[str]:
+        return [] if self.reserve is None else self.reserve["ticker"].tolist()
 
 
 def resolve_universe(config: DashboardConfig) -> UniverseSelection:
@@ -104,10 +110,15 @@ def resolve_universe(config: DashboardConfig) -> UniverseSelection:
         )
 
     ranking_lookup = {ticker: rank + 1 for rank, ticker in enumerate(selected_order)}
-    selected = official_members[official_members["ticker"].isin(selected_order[:target_size])].copy()
-    selected["rank"] = selected["ticker"].map(ranking_lookup)
-    selected = selected.sort_values("rank").reset_index(drop=True)
-    selected = selected[["rank", "ticker", "company_name"]]
+    def _ranked_rows(tickers: list[str]) -> pd.DataFrame:
+        rows = official_members[official_members["ticker"].isin(tickers)].copy()
+        rows["rank"] = rows["ticker"].map(ranking_lookup)
+        rows = rows.sort_values("rank").reset_index(drop=True)
+        return rows[["rank", "ticker", "company_name"]]
+
+    selected = _ranked_rows(selected_order[:target_size])
+    reserve_size = int(config.universe_policy.get("reserve_size", 10))
+    reserve = _ranked_rows(selected_order[target_size : target_size + reserve_size])
 
     metadata = {
         "resolved_at_utc": datetime.now(UTC).isoformat(),
@@ -118,7 +129,90 @@ def resolve_universe(config: DashboardConfig) -> UniverseSelection:
         "final_tickers": selected["ticker"].tolist(),
         "final_universe": selected.to_dict(orient="records"),
     }
-    return UniverseSelection(universe=selected, metadata=metadata)
+    return UniverseSelection(universe=selected, metadata=metadata, reserve=reserve)
+
+
+def apply_history_coverage(
+    selection: UniverseSelection,
+    prices: pd.DataFrame,
+    max_leading_gap_ratio: float,
+) -> tuple[UniverseSelection, pd.DataFrame]:
+    """Swap out members that started trading after the window began, promoting reserve names.
+
+    A member whose blank leading rows exceed ``max_leading_gap_ratio`` of the window (a recent IPO
+    or listing) would otherwise force the whole analysis down to its short history, because returns
+    are aligned on common dates. Such names are excluded and the next-ranked reserve names with full
+    coverage take their place, so the run keeps its size and its full window. Every swap is recorded
+    in ``metadata["history_substitutions"]``. Raises if the reserve runs out.
+    """
+
+    def leading_gap(ticker: str) -> float:
+        if ticker not in prices.columns or len(prices) == 0:
+            return 1.0
+        series = prices[ticker]
+        first = series.first_valid_index()
+        if first is None:
+            return 1.0
+        return float((prices.index < first).sum()) / len(prices)
+
+    def first_date(ticker: str) -> str | None:
+        if ticker not in prices.columns:
+            return None
+        first = prices[ticker].first_valid_index()
+        return None if first is None else str(pd.Timestamp(first).date())
+
+    short = [t for t in selection.tickers if leading_gap(t) > max_leading_gap_ratio]
+    if not short:
+        return selection, prices[selection.tickers]
+
+    reserve = selection.reserve if selection.reserve is not None else pd.DataFrame(
+        columns=["rank", "ticker", "company_name"]
+    )
+    universe = selection.universe
+    kept = universe[~universe["ticker"].isin(short)]
+    promoted_rows: list[pd.Series] = []
+    skipped_reserve: list[dict[str, Any]] = []
+    reserve_iter = iter(reserve.itertuples(index=False))
+    substitutions: list[dict[str, Any]] = []
+    for ticker in short:
+        row = universe.loc[universe["ticker"] == ticker].iloc[0]
+        replacement = None
+        for candidate in reserve_iter:
+            if leading_gap(candidate.ticker) <= max_leading_gap_ratio:
+                replacement = candidate
+                break
+            skipped_reserve.append({"ticker": candidate.ticker, "first_price_date": first_date(candidate.ticker)})
+        if replacement is None:
+            raise UniverseSourceError(
+                f"{ticker} lacks price history for the chosen window and no reserve name with full "
+                "history is left to replace it. Choose a shorter lookback or raise universe_policy.reserve_size."
+            )
+        promoted_rows.append(pd.Series(replacement._asdict()))
+        substitutions.append(
+            {
+                "excluded": ticker,
+                "excluded_rank": int(row["rank"]),
+                "first_price_date": first_date(ticker),
+                "window_start": str(pd.Timestamp(prices.index.min()).date()),
+                "replacement": replacement.ticker,
+                "replacement_rank": int(replacement.rank),
+            }
+        )
+
+    new_universe = pd.concat([kept, pd.DataFrame(promoted_rows)], ignore_index=True)
+    new_universe["rank"] = new_universe["rank"].astype(int)
+    new_universe = new_universe.sort_values("rank").reset_index(drop=True)[["rank", "ticker", "company_name"]]
+    used = set(new_universe["ticker"]) | {item["ticker"] for item in skipped_reserve}
+    new_reserve = reserve[~reserve["ticker"].isin(used)].reset_index(drop=True)
+
+    metadata = dict(selection.metadata)
+    metadata["history_substitutions"] = substitutions
+    if skipped_reserve:
+        metadata["history_substitutions_skipped_reserve"] = skipped_reserve
+    metadata["final_tickers"] = new_universe["ticker"].tolist()
+    metadata["final_universe"] = new_universe.to_dict(orient="records")
+    updated = UniverseSelection(universe=new_universe, metadata=metadata, reserve=new_reserve)
+    return updated, prices[updated.tickers]
 
 
 def write_universe(universe: pd.DataFrame, destination) -> None:

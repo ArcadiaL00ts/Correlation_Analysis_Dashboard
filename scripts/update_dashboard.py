@@ -20,13 +20,18 @@ from nasdaq_correlation_dashboard.pairs_cointegration import (
     export_pairs_workbook,
     write_pairs_artifacts,
 )
+from nasdaq_correlation_dashboard.net import configure_tls
 from nasdaq_correlation_dashboard.settings import load_config
 from nasdaq_correlation_dashboard.sources import (
     fetch_prices,
     validate_prices,
     write_metadata,
 )
-from nasdaq_correlation_dashboard.universe import resolve_universe, write_universe
+from nasdaq_correlation_dashboard.universe import (
+    apply_history_coverage,
+    resolve_universe,
+    write_universe,
+)
 
 
 def snapshot_previous_run(paths: dict[str, Path]) -> None:
@@ -88,6 +93,7 @@ def resolve_pairs_history_period(args: argparse.Namespace, config) -> str:
 
 def main() -> None:
     args = parse_args()
+    configure_tls()
     config = load_config(args.config)
     paths = config.paths
     history_period = resolve_history_period(args, config)
@@ -104,7 +110,18 @@ def main() -> None:
     )
 
     selection = resolve_universe(config)
-    result = fetch_prices(config, selection.tickers)
+    # Fetch the reserve too, so members listed after the window start can be swapped for the
+    # next-ranked names without a second download (see universe.apply_history_coverage).
+    result = fetch_prices(config, selection.tickers + selection.reserve_tickers)
+    selection, result.prices = apply_history_coverage(
+        selection, result.prices, float(config.validation["maximum_missing_ratio"])
+    )
+    for swap in selection.metadata.get("history_substitutions", []):
+        print(
+            f"{swap['excluded']} (rank {swap['excluded_rank']}) first traded {swap['first_price_date']}, "
+            f"after the {swap['window_start']} window start; replaced by {swap['replacement']} "
+            f"(rank {swap['replacement_rank']})."
+        )
     validation = validate_prices(result.prices, selection.tickers, config)
     artifacts = build_artifacts(
         result.prices,

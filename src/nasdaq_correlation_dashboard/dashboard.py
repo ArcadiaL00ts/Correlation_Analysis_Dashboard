@@ -18,6 +18,7 @@ from nasdaq_correlation_dashboard.correlation import (
     rolling_average_correlation,
 )
 from nasdaq_correlation_dashboard.cli import period_label
+from nasdaq_correlation_dashboard.net import configure_tls
 from nasdaq_correlation_dashboard.settings import load_config
 from nasdaq_correlation_dashboard.theme import inject_styles, plotly_theme, resolve_theme_tokens
 
@@ -32,6 +33,7 @@ HEATMAP_MARKET_LOOKBACKS = {
 
 
 def main() -> None:
+    configure_tls()
     root = Path(__file__).resolve().parents[2]
     # DASHBOARD_CONFIG lets the same app render an ETF-holdings run (see scripts/run_etf_correlation.py).
     config_override = os.environ.get("DASHBOARD_CONFIG", "").strip()
@@ -333,10 +335,22 @@ def main() -> None:
     with universe_tab:
         st.subheader(f"Resolved {universe_title} Universe")
         st.dataframe(universe, use_container_width=True, hide_index=True)
+        substitutions = metadata["universe"].get("history_substitutions") or []
+        if substitutions:
+            st.caption(
+                "Replaced for short price history (listed after the window start, so keeping them "
+                "would shorten every pair's window): "
+                + "; ".join(
+                    f"{item['excluded']} (rank {item['excluded_rank']}, first traded "
+                    f"{item['first_price_date']}) → {item['replacement']} (rank {item['replacement_rank']})"
+                    for item in substitutions
+                )
+            )
         st.subheader("Source Lineage")
         lineage = {
             "official_source": metadata["universe"]["official_source"],
             "ranking": metadata["universe"]["ranking"],
+            "history_substitutions": substitutions,
         }
         st.json(lineage, expanded=False)
 

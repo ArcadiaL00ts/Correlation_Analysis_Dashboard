@@ -32,7 +32,7 @@ Excel workbooks. Every artifact records where its data came from.
 Requires Python 3.11 or newer.
 
 ```bash
-git clone <this repo> && cd <repo folder>
+git clone https://github.com/ArcadiaL00ts/Correlation_Analysis_Dashboard.git && cd Correlation_Analysis_Dashboard
 python -m venv .venv
 # Windows: .venv\Scripts\activate      macOS/Linux: source .venv/bin/activate
 pip install -e .

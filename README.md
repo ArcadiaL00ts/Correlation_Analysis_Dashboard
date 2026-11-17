@@ -21,7 +21,7 @@ Excel workbooks. Every artifact records where its data came from.
 - **Cointegration:** Engle-Granger plus residual ADF on every pair (1,225 for 50 names), with hedge
   ratio, half-life and spread z-score. Pairs where either stock is range-bound rather than trending
   are tested but not qualified, because the test is not valid for them.
-- **ETF mode:** the same analysis on all holdings of any ETF (e.g. `TAN`), from the issuer's holdings export.
+- **ETF mode:** the same analysis on the top 50 holdings by fund weight of any ETF (e.g. `TAN`), from the issuer's holdings export. Funds with fewer holdings use them all; `--top-n` changes the count.
 - **Outputs:** CSV/JSON artifacts in `data/processed/` and Excel workbooks in `exports/`.
 
 ![Correlation heatmap](docs/images/heatmap.jpg)
@@ -52,7 +52,7 @@ the Microsoft Store placeholder).
 | Command | What it does |
 |---|---|
 | `corrdash-update [--history-period 2y] [--pairs-history-period 1y]` | Full NASDAQ-100 refresh |
-| `corrdash-etf --etf TAN [--holdings file.csv]` | Same pipeline on an ETF's holdings |
+| `corrdash-etf --etf TAN [--holdings file.csv] [--top-n 50\|100\|all]` | Same pipeline on an ETF's top holdings by weight |
 | `corrdash-pairs [--history-period 1y]` | Re-run cointegration only, on already-downloaded prices |
 | `corrdash-universe` | Preview the resolved top-50 universe (writes nothing) |
 | `corrdash-app [--config data/etf/TAN/config.json] [--port 8505]` | Launch the dashboard |
@@ -65,6 +65,11 @@ the Microsoft Store placeholder).
    Daily Holdings*; Global X / Vanguard: *Holdings → Export/Download*).
 2. Save it as `data/manual_universe/<ETF>_holdings.csv` (or `.xlsx`), or pass `--holdings <path>`.
 3. Run `corrdash-etf --etf <ETF>`, then `corrdash-app --config data/etf/<ETF>/config.json`.
+
+The run correlates the **top 50 holdings by fund weight** (`etf_runs.default_top_n` in the config).
+Pass `--top-n 100` (or `all`) for more, or answer the prompt. A fund with fewer holdings is used in
+full (TAN's 35 holdings give a 35×35 matrix). If Yahoo cannot price a holding, the next-heaviest
+one takes its place, and the metadata lists the share of fund weight covered.
 
 The parser finds the header row under any title/preamble, skips cash, money-market, futures and
 other non-equity lines, and maps each holding to its Yahoo Finance symbol using the exchange

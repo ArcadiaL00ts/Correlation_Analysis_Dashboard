@@ -87,7 +87,7 @@ scripts/                           ← Thin shims over nasdaq_correlation_dashbo
   run_pairs_cointegration.py       ← Standalone pairs cointegration run on local processed prices
   run_dashboard.py                 ← Streamlit launcher
   refresh_universe.py              ← Preview resolved universe (read-only)
-  run_etf_correlation.py           ← Same pipeline on any ETF's N holdings → data/etf/<ETF>/, exports/etf/<ETF>/
+  run_etf_correlation.py           ← Same pipeline on an ETF's top-N holdings by weight → data/etf/<ETF>/, exports/etf/<ETF>/
 
 commands/
   update-dashboard.ps1             ← Windows PowerShell wrapper for update
@@ -126,7 +126,7 @@ exports/                           ← Generated Excel workbooks
 ## Guardrails
 
 1. **Never change the universe or fallback order silently.** All changes must be logged in `codex.md`.
-2. **Never accept a universe smaller than 50 names** for the NASDAQ-100 run. ETF-holdings runs (`run_etf_correlation.py`) are sized to the fund's N holdings and write to isolated paths.
+2. **Never accept a universe smaller than 50 names** for the NASDAQ-100 run. ETF-holdings runs (`run_etf_correlation.py`) take the top N holdings by fund weight (`etf_runs.default_top_n`, 50; `--top-n N|all` overrides), use every holding when the fund has fewer, and write to isolated paths.
 3. **Never report success** unless universe CSV, correlation CSV, metadata JSON, and Excel workbook were produced.
 4. **Keep the heatmap locked to `[-1, 1]` domain.** Never rescale or clip.
 5. **Preserve the configured heatmap scale** (`heatmap_min/mid/max_color`, currently red → neutral → blue) unless the user explicitly asks for a change.

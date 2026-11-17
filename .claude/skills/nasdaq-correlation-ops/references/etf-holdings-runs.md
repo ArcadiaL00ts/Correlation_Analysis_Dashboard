@@ -1,11 +1,12 @@
 # ETF Holdings Runs
 
-Run the same correlation + cointegration pipeline on any ETF's holdings (e.g. TAN), sized to however
-many holdings the fund has. Outputs are isolated: `data/etf/<ETF>/` and `exports/etf/<ETF>/`.
+Run the same correlation + cointegration pipeline on any ETF's holdings (e.g. TAN): the top N by fund
+weight (`etf_runs.default_top_n`, 50; `--top-n` or the prompt overrides, `all` = every holding), or every
+holding when the fund has fewer. Unpriceable names are backfilled by the next-heaviest holding. Outputs are isolated: `data/etf/<ETF>/` and `exports/etf/<ETF>/`.
 The NASDAQ-100 `latest_*` artifacts and the 50-name guardrail are untouched.
 
 ```
-py -3 scripts/run_etf_correlation.py --etf TAN [--holdings <file>] [--history-period 2y] [--pairs-history-period 1y]
+py -3 scripts/run_etf_correlation.py --etf TAN [--holdings <file>] [--top-n 50|100|all] [--history-period 2y] [--pairs-history-period 1y]
 py -3 scripts/run_dashboard.py --config data/etf/TAN/config.json
 ```
 

@@ -1158,6 +1158,10 @@ def _rerun_command(
         holdings = current.get("universe", {}).get("official_source", {}).get("path")
         if holdings and Path(holdings).exists():
             command += ["--holdings", holdings]
+        # Keep the holdings count the run was made with (the subprocess has no TTY to prompt).
+        top_n = config.universe_policy.get("requested_top_n")
+        if top_n is not None:
+            command += ["--top-n", str(top_n)]
     else:
         command = [sys.executable, "-m", "nasdaq_correlation_dashboard.commands.update", "--config", str(config_path)]
     return command + ["--history-period", price_period, "--pairs-history-period", pair_period]

@@ -70,3 +70,44 @@ def resolve_history_period(
     if chosen not in allowed:
         raise SystemExit(f"Unsupported {label} '{chosen}'. Allowed values: {', '.join(allowed)}.")
     return chosen
+
+
+def parse_top_n(value: object) -> int | None:
+    """``"all"``/``0``/blank -> None (every holding); otherwise a positive int."""
+    text = str(value).strip().lower() if value is not None else ""
+    if text in {"", "all", "0"}:
+        return None
+    try:
+        number = int(text)
+    except ValueError:
+        raise SystemExit(f"Holdings count must be a positive whole number or 'all', not '{value}'.") from None
+    if number < 3:
+        raise SystemExit(f"Holdings count must be at least 3 (got {number}).")
+    return number
+
+
+def resolve_top_n(
+    cli_value: str | None,
+    configured: object,
+    choices: Iterable[object] | None = None,
+) -> int | None:
+    """Pick how many top-weighted ETF holdings to correlate.
+
+    Priority: explicit ``cli_value`` > interactive prompt (TTY only) > ``configured``.
+    Any positive whole number (>= 3) or ``all`` is accepted; ``choices`` only label the prompt.
+    Returns None for "all holdings".
+    """
+
+    default_label = "all" if parse_top_n(configured) is None else str(parse_top_n(configured))
+    if cli_value is not None and str(cli_value).strip():
+        return parse_top_n(cli_value)
+    if sys.stdin.isatty():
+        hint = ", ".join(str(c) for c in (choices or [])) or "e.g. 25, 50, 100, all"
+        try:
+            answer = input(
+                f"Number of top-weighted holdings to correlate [{hint}] (default: {default_label}): "
+            ).strip()
+        except EOFError:
+            answer = ""
+        return parse_top_n(answer or default_label)
+    return parse_top_n(default_label)

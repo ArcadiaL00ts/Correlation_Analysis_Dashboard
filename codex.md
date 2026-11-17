@@ -199,3 +199,4 @@ Branch `release-prep`. Checkpoint of the TAN session: `ea27d50`.
 - **NASDAQ-100 run unchanged:** still the top 50 by QQQM holdings weight, with Yahoo market cap only as the guarded fallback.
 - **Verified:** new `tests/test_etf_top_n.py` (end-to-end ETF run on synthetic 60/39/80-holding files with mocked prices: default 50 with backfill of 2 unpriceable names, a small fund adapting to 37×37, `--top-n 60`, `--top-n all`). 62/62 tests pass. Live TAN: default → 35×35 (99.9% of fund weight); `--top-n 20` → 20×20 (85.8%), heaviest first (NXT, FSLR, ENLT.TA, ...). TAN was then re-run with the default.
 
+- **Fresh-clone test (2026-11-18):** cloned `release-prep` (77 tracked files) into a temp dir, new venv, `pip install -e .`, 62/62 tests pass, `corrdash-update --history-period 1y` produced all 9 processed artifacts and both workbooks (50 tickers; SPCX swapped for ADBE for short history), Streamlit health check OK and `AppTest` rendered 5 tabs with 0 exceptions.

@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import html
 import json
 import os
 import sys
@@ -86,7 +87,7 @@ def main() -> None:
         (
             "<div class='hero-subtitle'>"
             + (
-                f"{universe_label} weighted by the fund's own holdings export, "
+                f"{_esc(universe_label)} weighted by the fund's own holdings export, "
                 "with locally computed correlations."
                 if is_etf_run
                 else "Official Nasdaq membership authority with transparent top-50 ranking fallbacks "
@@ -1042,25 +1043,30 @@ def _build_time_series_layout(
     }
 
 
+def _esc(value: object) -> str:
+    """HTML-escape a data-derived value before it goes into unsafe_allow_html markup."""
+    return html.escape(str(value))
+
+
 def _definition_card(title: str, entries: list[tuple[str, str]]) -> str:
     items = "".join(
-        f"<li><strong>{label}:</strong> {definition}</li>"
+        f"<li><strong>{_esc(label)}:</strong> {_esc(definition)}</li>"
         for label, definition in entries
         if definition
     )
     return (
         "<div class='definition-card'>"
-        f"<h4>{title}</h4>"
+        f"<h4>{_esc(title)}</h4>"
         f"<ul>{items}</ul>"
         "</div>"
     )
 
 
 def _status_card(title: str, lines: list[str]) -> str:
-    items = "".join(f"<li>{line}</li>" for line in lines)
+    items = "".join(f"<li>{_esc(line)}</li>" for line in lines)
     return (
         "<div class='status-card'>"
-        f"<h4>{title}</h4>"
+        f"<h4>{_esc(title)}</h4>"
         f"<ul>{items}</ul>"
         "</div>"
     )

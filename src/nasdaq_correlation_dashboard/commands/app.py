@@ -8,8 +8,6 @@ import sys
 from pathlib import Path
 
 
-
-
 def _listening_pids(port: int) -> list[int]:
     """PIDs listening on ``port`` (best effort; empty if the OS tool is unavailable)."""
     if sys.platform == "win32":
@@ -70,7 +68,13 @@ def main() -> None:
         default=int(os.environ.get("DASHBOARD_PORT", "8505").strip() or "8505"),
         help="Port to serve on (default 8505, or DASHBOARD_PORT). Only a dashboard already on this port is restarted.",
     )
+    parser.add_argument(
+        "--lan",
+        action="store_true",
+        help="Serve on all network interfaces so other devices can connect. Default: this computer only (127.0.0.1).",
+    )
     args = parser.parse_args()
+    address = "0.0.0.0" if args.lan else (os.environ.get("DASHBOARD_ADDRESS", "").strip() or "127.0.0.1")
     streamlit = shutil.which("streamlit")
     app_path = Path(__file__).resolve().parents[1] / "dashboard.py"
     _free_port(args.port)
@@ -82,32 +86,26 @@ def main() -> None:
     env["STREAMLIT_BROWSER_GATHER_USAGE_STATS"] = "false"
     if args.config:
         env["DASHBOARD_CONFIG"] = str(Path(args.config).resolve())
-    if streamlit is not None:
-        command = [
-            streamlit,
-            "run",
-            str(app_path),
-            "--browser.gatherUsageStats",
-            "false",
-            "--server.port",
-            port,
-            "--server.headless",
-            "false",
-        ]
-    else:
-        command = [
-            sys.executable,
-            "-m",
-            "streamlit",
-            "run",
-            str(app_path),
-            "--browser.gatherUsageStats",
-            "false",
-            "--server.port",
-            port,
-            "--server.headless",
-            "false",
-        ]
+    launcher = [streamlit] if streamlit is not None else [sys.executable, "-m", "streamlit"]
+    command = [
+        *launcher,
+        "run",
+        str(app_path),
+        "--browser.gatherUsageStats",
+        "false",
+        "--server.address",
+        address,
+        "--server.port",
+        port,
+        "--server.headless",
+        "false",
+    ]
+    if address != "127.0.0.1":
+        print(
+            f"WARNING: serving on {address}, so other devices on the network can open the dashboard and use its "
+            "re-run button (starts downloads and CPU work). Set dashboard.enable_rerun to false in the config "
+            "to disable it."
+        )
     print(f"Starting dashboard at http://localhost:{port}")
     subprocess.run(command, check=True, env=env)
 

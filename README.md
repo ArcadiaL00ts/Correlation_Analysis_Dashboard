@@ -55,7 +55,7 @@ the Microsoft Store placeholder).
 | `corrdash-etf --etf TAN [--holdings file.csv] [--top-n 50\|100\|all]` | Same pipeline on an ETF's top holdings by weight |
 | `corrdash-pairs [--history-period 1y]` | Re-run cointegration only, on already-downloaded prices |
 | `corrdash-universe` | Preview the resolved top-50 universe (writes nothing) |
-| `corrdash-app [--config data/etf/TAN/config.json] [--port 8505]` | Launch the dashboard |
+| `corrdash-app [--config data/etf/TAN/config.json] [--port 8505] [--lan]` | Launch the dashboard (this computer only; `--lan` lets other devices on the network connect) |
 | `python -m unittest discover tests` | Run the offline test suite |
 
 ## Running on an ETF's holdings
@@ -99,6 +99,9 @@ size and ranking sources, history and validation limits, cointegration threshold
 
 - `dashboard.enable_rerun` (default `true`): set it to `false` for any **shared or hosted
   deployment**, otherwise any visitor can start long data downloads. The tool is meant to run locally.
+- The dashboard listens on `127.0.0.1` only by default. `corrdash-app --lan` (or the
+  `DASHBOARD_ADDRESS` environment variable) serves it on the network instead; anyone who can reach
+  the port can then use the re-run button, so pair it with `dashboard.enable_rerun: false`.
 - `price_source.fallback_provider: "csv_directory"`: if Yahoo Finance is unavailable, put one CSV
   per ticker (`Date` plus `Adj Close` or `Close`) in `data/manual_prices/`.
 

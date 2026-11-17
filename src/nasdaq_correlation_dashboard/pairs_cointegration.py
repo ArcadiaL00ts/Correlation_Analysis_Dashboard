@@ -14,6 +14,7 @@ import statsmodels.api as sm
 from statsmodels.tsa.stattools import adfuller, coint
 
 from .atomic_io import atomic_target, write_csv, write_json
+from .excel_export import safe_frame
 
 
 DEFAULT_COINTEGRATION_P_THRESHOLD = 0.05
@@ -331,12 +332,12 @@ def export_pairs_workbook(
     destination.parent.mkdir(parents=True, exist_ok=True)
 
     with atomic_target(destination) as tmp, pd.ExcelWriter(tmp, engine="openpyxl") as writer:
-        artifacts.input_summary.to_excel(writer, sheet_name="input_summary", index=False)
-        artifacts.all_pairs.to_excel(writer, sheet_name="all_pairs_tested", index=False)
-        artifacts.qualified_pairs.to_excel(writer, sheet_name="qualified_pairs", index=False)
-        artifacts.spread_history.to_excel(writer, sheet_name="pair_spreads", index=False)
-        artifacts.parameters.to_excel(writer, sheet_name="parameters", index=False)
-        artifacts.provenance.to_excel(writer, sheet_name="provenance", index=False)
+        safe_frame(artifacts.input_summary).to_excel(writer, sheet_name="input_summary", index=False)
+        safe_frame(artifacts.all_pairs).to_excel(writer, sheet_name="all_pairs_tested", index=False)
+        safe_frame(artifacts.qualified_pairs).to_excel(writer, sheet_name="qualified_pairs", index=False)
+        safe_frame(artifacts.spread_history).to_excel(writer, sheet_name="pair_spreads", index=False)
+        safe_frame(artifacts.parameters).to_excel(writer, sheet_name="parameters", index=False)
+        safe_frame(artifacts.provenance).to_excel(writer, sheet_name="provenance", index=False)
 
         workbook = writer.book
         for worksheet in workbook.worksheets:

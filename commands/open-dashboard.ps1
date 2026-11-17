@@ -12,8 +12,8 @@ $projectRoot = Split-Path -Parent $PSScriptRoot
 $env:PYTHONPATH = "$projectRoot\src"
 
 if ($python -eq "py") {
-    & $python -3 "$projectRoot\scripts\run_dashboard.py"
+    & $python -3 "$projectRoot\scripts\run_dashboard.py" @args
 }
 else {
-    & $python "$projectRoot\scripts\run_dashboard.py"
+    & $python "$projectRoot\scripts\run_dashboard.py" @args
 }

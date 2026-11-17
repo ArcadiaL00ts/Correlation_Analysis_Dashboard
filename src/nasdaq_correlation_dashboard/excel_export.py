@@ -16,6 +16,34 @@ from .settings import DashboardConfig
 HEADER_FILL = PatternFill(fill_type="solid", fgColor="10243E")
 HEADER_FONT = Font(color="FFFFFF", bold=True)
 
+# Text starting with one of these is evaluated as a formula by Excel and similar apps.
+_FORMULA_PREFIXES = ("=", "+", "-", "@", "\t", "\r")
+
+
+def safe_cell(value):
+    """Neutralise spreadsheet formula injection: prefix risky strings with an apostrophe.
+
+    Only strings are touched; numbers (including negative correlations) pass through unchanged.
+    """
+    if isinstance(value, str) and value.startswith(_FORMULA_PREFIXES):
+        return "'" + value
+    return value
+
+
+def safe_row(values) -> list:
+    return [safe_cell(value) for value in values]
+
+
+def safe_frame(frame: pd.DataFrame) -> pd.DataFrame:
+    """Copy of ``frame`` with formula-like strings neutralised in object columns and headers."""
+    result = frame.copy()
+    for position in range(result.shape[1]):
+        series = result.iloc[:, position]
+        if pd.api.types.is_object_dtype(series) or pd.api.types.is_string_dtype(series):
+            result.iloc[:, position] = series.map(safe_cell)
+    result.columns = [safe_cell(column) for column in result.columns]
+    return result
+
 
 def export_workbook(
     artifacts: CorrelationArtifacts,
@@ -78,7 +106,7 @@ def _write_metadata_sheet(sheet, artifacts: CorrelationArtifacts) -> None:
             if isinstance(value, dict):
                 append_mapping(full_key, value)
             else:
-                sheet.append([full_key, str(value)])
+                sheet.append(safe_row([full_key, str(value)]))
 
     append_mapping("", artifacts.metadata)
     for column in ("A", "B"):
@@ -96,13 +124,15 @@ def _write_pairs_sheet(sheet, artifacts: CorrelationArtifacts, config: Dashboard
         strong = strongest[index] if index < len(strongest) else {"pair": "", "correlation": ""}
         weak = weakest[index] if index < len(weakest) else {"pair": "", "correlation": ""}
         sheet.append(
-            [
-                strong["pair"],
-                strong["correlation"],
-                "",
-                weak["pair"],
-                weak["correlation"],
-            ]
+            safe_row(
+                [
+                    strong["pair"],
+                    strong["correlation"],
+                    "",
+                    weak["pair"],
+                    weak["correlation"],
+                ]
+            )
         )
     for column_index in range(1, 6):
         sheet.column_dimensions[get_column_letter(column_index)].width = 24
@@ -110,16 +140,16 @@ def _write_pairs_sheet(sheet, artifacts: CorrelationArtifacts, config: Dashboard
 
 def _write_frame(sheet, frame, index_label: str, include_index: bool = True) -> None:
     header = [index_label, *list(frame.columns)] if include_index else list(frame.columns)
-    sheet.append(header)
+    sheet.append(safe_row(header))
     _style_header(sheet)
 
     if include_index:
         for index, row in frame.iterrows():
             values = [str(index.date()) if hasattr(index, "date") else str(index), *row.tolist()]
-            sheet.append(values)
+            sheet.append(safe_row(values))
     else:
         for _, row in frame.iterrows():
-            sheet.append(row.tolist())
+            sheet.append(safe_row(row.tolist()))
 
     for cell in sheet["A"]:
         cell.alignment = Alignment(horizontal="left")

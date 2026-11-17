@@ -54,6 +54,17 @@
     "maximum_missing_ratio": 0.05,
     "minimum_ranked_constituents": 50
   },
+  "etf_runs": {
+    "default_top_n": 50,
+    "reserve_size": 10,
+    "top_n_prompt_choices": [
+      25,
+      50,
+      75,
+      100,
+      "all"
+    ]
+  },
   "analytics": {
     "rolling_windows": [
       20,

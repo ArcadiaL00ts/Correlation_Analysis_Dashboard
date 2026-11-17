@@ -4,10 +4,12 @@ import argparse
 import sys
 from pathlib import Path
 
+import pandas as pd
 
 from ..cli import (
     period_label,
     resolve_history_period,
+    resolve_top_n,
     scaled_minimum_rows,
     scaled_window,
 )
@@ -16,6 +18,7 @@ from ..atomic_io import copy_file, write_csv, write_json
 from ..etf_universe import (
     build_etf_selection,
     parse_holdings,
+    select_top_weighted,
     read_holdings_file,
     resolve_ambiguous_symbols,
     write_etf_config,
@@ -54,6 +57,13 @@ def parse_args() -> argparse.Namespace:
         default="",
         help="Comma list of SOURCE=YAHOO overrides, e.g. 'ENLT=ENLT.TA,3800=3800.HK'.",
     )
+    parser.add_argument(
+        "--top-n",
+        help=(
+            "How many holdings to correlate, taken by fund weight (e.g. 25, 50, 100, or 'all'). "
+            "Default: etf_runs.default_top_n (50). Funds with fewer priceable holdings use them all."
+        ),
+    )
     parser.add_argument("--history-period", help="Price history horizon (e.g. 1y, 2y, 5y).")
     parser.add_argument("--pairs-history-period", help="Cointegration window (e.g. 6mo, 1y, 2y).")
     parser.add_argument(
@@ -87,8 +97,14 @@ def main() -> None:
         choices=base.pairs_trading.get("prompt_choices"),
         label="cointegration lookback",
     )
+    etf_runs = base.payload.get("etf_runs", {})
+    top_n = resolve_top_n(
+        args.top_n, etf_runs.get("default_top_n", 50), etf_runs.get("top_n_prompt_choices")
+    )
+    reserve = int(etf_runs.get("reserve_size", 10))
     print(
-        f"{etf}: price history {period_label(history_period)}, "
+        f"{etf}: {'all holdings' if top_n is None else f'top {top_n} holdings by weight'}, "
+        f"price history {period_label(history_period)}, "
         f"cointegration window {period_label(pairs_period)}."
     )
 
@@ -118,7 +134,8 @@ def main() -> None:
     for item in unmapped:
         print(f"Not included: {item['name'] or '?'} ({item.get('identifier') or 'no id'}, weight {item['weight']}): {item['reason']}")
 
-    config_path = write_etf_config(Path(args.base_config), etf, len(holdings))
+    holdings_total = len(holdings)
+    config_path = write_etf_config(Path(args.base_config), etf, holdings_total, top_n)
     config = load_config(config_path)
     config.payload["history"]["period"] = history_period
     config.payload["pairs_trading"]["history_period"] = pairs_period
@@ -133,32 +150,40 @@ def main() -> None:
         pairs_period, int(config.pairs_trading["rolling_z_window"])
     )
 
-    result = fetch_prices(config, holdings["ticker"].tolist())
-    prices = result.prices  # fetch_prices already retried any blank symbols once
-    prices = prices.ffill(limit=CROSS_EXCHANGE_FFILL_LIMIT)
-
-    # Drop holdings Yahoo cannot price (bad symbol mapping, recent IPO) rather than failing the run.
+    # Price the heaviest holdings first: top N plus a reserve, then the next-heaviest names if
+    # unpriceable ones leave the selection short. "all" (top_n None) prices every holding.
     min_rows = int(config.validation["minimum_rows"])
     max_missing = float(config.validation["maximum_missing_ratio"])
-    dropped: list[dict[str, str]] = []
-    for ticker in holdings["ticker"]:
-        if ticker not in prices.columns:
-            dropped.append({"ticker": ticker, "reason": "no price data returned"})
-            continue
-        series = prices[ticker]
-        first_valid = series.first_valid_index()
-        if first_valid is None:
-            dropped.append({"ticker": ticker, "reason": "no price data returned"})
-        elif series.notna().sum() < min_rows:
-            dropped.append({"ticker": ticker, "reason": f"only {int(series.notna().sum())} priced rows"})
-        elif series.loc[first_valid:].isna().mean() > max_missing:
-            # Leading gaps (window opens on a local holiday) are trimmed below, so ignore them here.
-            dropped.append(
-                {"ticker": ticker, "reason": f"{series.loc[first_valid:].isna().mean():.1%} missing"}
-            )
+    target = holdings_total if top_n is None else min(top_n + reserve, holdings_total)
+    fetched = 0
+    frames: list[pd.DataFrame] = []
+    result = None
+    while True:
+        batch = holdings["ticker"].iloc[fetched:target].tolist()
+        batch_result = fetch_prices(config, batch)  # retries blank symbols once
+        frames.append(batch_result.prices)
+        if result is None:
+            result = batch_result
+        else:
+            result.metadata.setdefault("backfill_batches", []).append(batch)
+        fetched = target
+        prices = pd.concat(frames, axis=1).ffill(limit=CROSS_EXCHANGE_FFILL_LIMIT)
+        dropped = _unpriceable(prices, holdings["ticker"].iloc[:fetched].tolist(), min_rows, max_missing)
+        priced = fetched - len(dropped)
+        if top_n is None or priced >= top_n or fetched >= holdings_total:
+            break
+        target = min(holdings_total, fetched + (top_n - priced) + reserve)
+
     dropped_set = {item["ticker"] for item in dropped}
-    holdings = holdings[~holdings["ticker"].isin(dropped_set)].reset_index(drop=True)
-    holdings["rank"] = range(1, len(holdings) + 1)
+    fetched_holdings = holdings.iloc[:fetched]
+    priceable = fetched_holdings[~fetched_holdings["ticker"].isin(dropped_set)]
+    unfetched = holdings.iloc[fetched:]
+    holdings, excluded = select_top_weighted(priceable, top_n)
+    # Holdings past the reserve were never priced; they sit below the weight cutoff too.
+    excluded += [
+        {"ticker": row["ticker"], "company_name": row["company_name"], "weight": float(row["weight"])}
+        for _, row in unfetched.iterrows()
+    ]
     if len(holdings) < 3:
         raise SystemExit(f"Only {len(holdings)} priceable holdings; dropped: {dropped}")
 
@@ -168,7 +193,18 @@ def main() -> None:
     config.payload["universe_policy"]["universe_size"] = len(tickers)
     write_json(config.payload, config_path)
 
-    selection = build_etf_selection(etf, holdings, holdings_path, skipped, dropped, as_of_date, symbol_report)
+    selection = build_etf_selection(
+        etf,
+        holdings,
+        holdings_path,
+        skipped,
+        dropped,
+        as_of_date,
+        symbol_report,
+        top_n=top_n,
+        holdings_total=holdings_total,
+        excluded_below_cutoff=excluded,
+    )
     result.metadata["cross_exchange_ffill_limit"] = CROSS_EXCHANGE_FFILL_LIMIT
     validation = validate_prices(prices, tickers, config)
     artifacts = build_artifacts(prices, result.metadata, selection.metadata, validation, config)
@@ -219,14 +255,42 @@ def main() -> None:
     }
     write_metadata(artifacts.metadata, paths["metadata_json"])
 
+    if top_n is not None and len(tickers) < top_n:
+        print(f"{etf}: only {len(tickers)} priceable equity holdings, so the matrix is {len(tickers)}x{len(tickers)} (asked for {top_n}).")
+    if excluded:
+        print(f"{etf}: {len(excluded)} lower-weight holdings left out (cutoff: top {top_n} by weight).")
     print(
         f"{etf}: {len(tickers)} holdings correlated "
-        f"({period_label(history_period)}, pairs {period_label(pairs_period)})."
+        f"({float(holdings['weight'].sum()):.1f}% of fund weight; "
+        f"{period_label(history_period)}, pairs {period_label(pairs_period)})."
     )
     if dropped:
         print("Dropped (unpriced):", ", ".join(f"{d['ticker']} ({d['reason']})" for d in dropped))
     print(f"Workbook: {paths['excel_workbook']}")
     print(f"View: corrdash-app --config {config_path}   (or: py -3 scripts/run_dashboard.py --config {config_path})")
+
+
+def _unpriceable(
+    prices: pd.DataFrame, tickers: list[str], min_rows: int, max_missing: float
+) -> list[dict[str, str]]:
+    """Holdings Yahoo cannot price well enough (bad symbol mapping, recent IPO) to correlate."""
+    dropped: list[dict[str, str]] = []
+    for ticker in tickers:
+        if ticker not in prices.columns:
+            dropped.append({"ticker": ticker, "reason": "no price data returned"})
+            continue
+        series = prices[ticker]
+        first_valid = series.first_valid_index()
+        if first_valid is None:
+            dropped.append({"ticker": ticker, "reason": "no price data returned"})
+        elif series.notna().sum() < min_rows:
+            dropped.append({"ticker": ticker, "reason": f"only {int(series.notna().sum())} priced rows"})
+        elif series.loc[first_valid:].isna().mean() > max_missing:
+            # Leading gaps (window opens on a local holiday) are trimmed later, so ignore them here.
+            dropped.append(
+                {"ticker": ticker, "reason": f"{series.loc[first_valid:].isna().mean():.1%} missing"}
+            )
+    return dropped
 
 
 if __name__ == "__main__":

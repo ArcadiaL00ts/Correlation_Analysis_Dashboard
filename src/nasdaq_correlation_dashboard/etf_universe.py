@@ -415,6 +415,28 @@ def resolve_ambiguous_symbols(
     return holdings, report
 
 
+def select_top_weighted(
+    priced: pd.DataFrame,
+    top_n: int | None,
+) -> tuple[pd.DataFrame, list[dict[str, Any]]]:
+    """Keep the ``top_n`` heaviest priceable holdings (all when None), re-ranked 1..N.
+
+    ``priced`` must already be sorted by weight descending (``parse_holdings`` does this) with
+    unpriceable names removed, so a dropped name is backfilled by the next-heaviest holding.
+    Returns the selection and the holdings cut below the weight cutoff.
+    """
+    ordered = priced.sort_values("weight", ascending=False, kind="stable").reset_index(drop=True)
+    keep = ordered if top_n is None else ordered.head(top_n)
+    below = ordered.iloc[len(keep):]
+    excluded = [
+        {"ticker": row["ticker"], "company_name": row["company_name"], "weight": float(row["weight"])}
+        for _, row in below.iterrows()
+    ]
+    keep = keep.copy()
+    keep["rank"] = range(1, len(keep) + 1)
+    return keep.reset_index(drop=True), excluded
+
+
 def build_etf_selection(
     etf: str,
     holdings: pd.DataFrame,
@@ -423,6 +445,9 @@ def build_etf_selection(
     dropped: list[dict[str, str]],
     as_of_date: str | None = None,
     symbol_report: list[dict[str, Any]] | None = None,
+    top_n: int | None = None,
+    holdings_total: int | None = None,
+    excluded_below_cutoff: list[dict[str, Any]] | None = None,
 ) -> UniverseSelection:
     universe = holdings[["rank", "ticker", "company_name"]].copy()
     metadata = {
@@ -437,7 +462,12 @@ def build_etf_selection(
             "trade_date": as_of_date or datetime.fromtimestamp(holdings_path.stat().st_mtime).date().isoformat(),
             "note": (
                 "ETF holdings run. The NASDAQ-100 50-name minimum does not apply; "
-                "the universe is every priced equity holding of the fund."
+                + (
+                    "the universe is every priced equity holding of the fund, ranked by fund weight."
+                    if top_n is None
+                    else f"the universe is the top {top_n} priced equity holdings by fund weight "
+                    "(fewer when the fund holds fewer)."
+                )
             ),
         },
         "ranking": {
@@ -452,6 +482,10 @@ def build_etf_selection(
             "symbol_resolution": symbol_report or [],
             "dropped_unpriced": dropped,
             "weights": dict(zip(holdings["ticker"], holdings["weight"])),
+            "requested_top_n": top_n,
+            "equity_holdings_total": holdings_total if holdings_total is not None else int(len(universe)),
+            "excluded_below_weight_cutoff": excluded_below_cutoff or [],
+            "selected_weight_sum": float(holdings["weight"].sum()),
         },
         "final_tickers": universe["ticker"].tolist(),
         "final_universe": universe.to_dict(orient="records"),
@@ -459,7 +493,9 @@ def build_etf_selection(
     return UniverseSelection(universe=universe.reset_index(drop=True), metadata=metadata)
 
 
-def write_etf_config(base_config_path: Path, etf: str, universe_size: int) -> Path:
+def write_etf_config(
+    base_config_path: Path, etf: str, universe_size: int, top_n: int | None = None
+) -> Path:
     """Derive a per-ETF config from the base config with isolated output paths."""
     base = load_config(base_config_path)
     payload = copy.deepcopy(base.payload)
@@ -471,6 +507,8 @@ def write_etf_config(base_config_path: Path, etf: str, universe_size: int) -> Pa
         "universe_size": universe_size,
         "selection_mode": "etf_holdings_weight_rank",
         "benchmark_ticker": slug,
+        # What the user asked for ("all" = every holding); universe_size is what was achieved.
+        "requested_top_n": "all" if top_n is None else top_n,
     }
     payload["validation"]["minimum_ranked_constituents"] = universe_size
     data_dir = f"data/etf/{slug}"

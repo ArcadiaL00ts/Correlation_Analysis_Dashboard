@@ -54,7 +54,7 @@ class HtmlEscapeTests(unittest.TestCase):
         self.assertEqual(_esc(ticker), "&lt;img src=x onerror=1&gt;")
         card = _status_card("Pair Readout", [f"Pair: {ticker}"])
         self.assertNotIn("<img", card)
-        self.assertIn("<li>Pair: &lt;img", card)
+        self.assertIn("&lt;img src=x onerror=1&gt;</span>", card)
         definition = _definition_card("Guide", [("ADF", "<script>x</script>")])
         self.assertNotIn("<script>", definition)
         self.assertIn("<strong>ADF:</strong>", definition)

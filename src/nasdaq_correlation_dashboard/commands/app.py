@@ -7,6 +7,8 @@ import subprocess
 import sys
 from pathlib import Path
 
+from ..theme import streamlit_theme_flags
+
 
 def _listening_pids(port: int) -> list[int]:
     """PIDs listening on ``port`` (best effort; empty if the OS tool is unavailable)."""
@@ -56,6 +58,16 @@ def _free_port(port: int) -> None:
             )
 
 
+def _config_visuals(config_arg: str | None) -> dict:
+    """The `visuals` block of the config being shown, so the Streamlit base theme matches the CSS."""
+    try:
+        from ..settings import default_config_path, load_config
+
+        return load_config(Path(config_arg).resolve() if config_arg else default_config_path()).visuals
+    except Exception:  # the theme flags fall back to the defaults; never block the launch
+        return {}
+
+
 def main() -> None:
     parser = argparse.ArgumentParser(description="Launch the Streamlit correlation dashboard.")
     parser.add_argument(
@@ -99,6 +111,7 @@ def main() -> None:
         port,
         "--server.headless",
         "false",
+        *streamlit_theme_flags(_config_visuals(args.config)),
     ]
     if address != "127.0.0.1":
         print(

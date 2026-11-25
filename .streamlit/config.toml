@@ -1,0 +1,13 @@
+# Streamlit base theme. Generated from theme.streamlit_theme_options(); a test keeps them in sync.
+[theme]
+base = "dark"
+primaryColor = "#58C8FF"
+backgroundColor = "#0A0D12"
+secondaryBackgroundColor = "#141922"
+textColor = "#E8ECF2"
+borderColor = "#262C37"
+dataframeBorderColor = "#20262F"
+dataframeHeaderBackgroundColor = "#1B212C"
+font = "Inter, sans-serif"
+codeFont = "JetBrains Mono, monospace"
+baseRadius = "8px"

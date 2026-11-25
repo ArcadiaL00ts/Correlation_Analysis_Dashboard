@@ -4,7 +4,9 @@ import html
 import json
 import os
 import sys
+from contextlib import contextmanager
 from pathlib import Path
+from typing import Iterator
 
 import pandas as pd
 import plotly.graph_objects as go
@@ -19,9 +21,10 @@ from nasdaq_correlation_dashboard.correlation import (
 )
 from nasdaq_correlation_dashboard.cli import period_label
 from nasdaq_correlation_dashboard import rerun_job
+from nasdaq_correlation_dashboard.emblems import brand_mark, panel_head
 from nasdaq_correlation_dashboard.net import configure_tls
 from nasdaq_correlation_dashboard.settings import load_config, project_root
-from nasdaq_correlation_dashboard.theme import inject_styles, plotly_theme, resolve_theme_tokens
+from nasdaq_correlation_dashboard.theme import hoverlabel, inject_styles, plotly_theme, resolve_theme_tokens
 
 HEATMAP_MARKET_DEFAULT_TICKER = "QQQM"
 HEATMAP_MARKET_LOOKBACKS = {
@@ -30,7 +33,6 @@ HEATMAP_MARKET_LOOKBACKS = {
     "3m": "3mo",
     "1w": "5d",
 }
-
 
 
 def main() -> None:
@@ -80,28 +82,14 @@ def main() -> None:
     }
     missing = [name for name, path in required.items() if not path.exists()]
 
-    st.markdown("<div class='hero-shell'>", unsafe_allow_html=True)
-    # Escape "$" so a ticker-style title ("$TAN ...") is not parsed as LaTeX by Streamlit markdown.
-    st.title(config.visuals["page_title"].replace("$", r"\$"))
-    st.markdown(
-        (
-            "<div class='hero-subtitle'>"
-            + (
-                f"{_esc(universe_label)} weighted by the fund's own holdings export, "
-                "with locally computed correlations."
-                if is_etf_run
-                else "Official Nasdaq membership authority with transparent top-50 ranking fallbacks "
-                "and locally computed correlations."
-            )
-            + "</div>"
-        ),
-        unsafe_allow_html=True,
+    subtitle = (
+        f"{universe_label} weighted by the fund's own holdings export, with locally computed correlations."
+        if is_etf_run
+        else "Official Nasdaq membership with transparent top-50 ranking fallbacks and locally computed correlations."
     )
-    st.markdown("</div>", unsafe_allow_html=True)
-
-    _render_rerun_panel(config, config_path, root, is_etf_run)
-
     if missing:
+        st.markdown(_hero(config.visuals["page_title"], subtitle, None, {}, config.visuals), unsafe_allow_html=True)
+        _render_rerun_panel(config, config_path, root, is_etf_run)
         st.error(
             "Dashboard artifacts are incomplete. Missing: "
             + ", ".join(missing)
@@ -121,10 +109,15 @@ def main() -> None:
     pairs_spreads = _read_optional_csv(optional["pairs_spreads"], parse_dates=["date"])
     pairs_metadata = _read_optional_json(optional["pairs_metadata"])
 
+    st.markdown(
+        _hero(config.visuals["page_title"], subtitle, correlation, metadata, config.visuals),
+        unsafe_allow_html=True,
+    )
+    _render_rerun_panel(config, config_path, root, is_etf_run)
+
     universe_count = len(universe)
     average_corr = average_pairwise_correlation(correlation)
     ranking_type = metadata["universe"]["ranking"]["source_type"] or "unresolved"
-    fallback_flag = "Yes" if metadata["universe"]["ranking"]["fallback_used"] else "No"
     pair_limit = int(config.analytics["pair_table_limit"])
     strongest_pairs = pd.DataFrame(ranked_pairs(correlation, limit=pair_limit, ascending=False))
     weakest_pairs = pd.DataFrame(ranked_pairs(correlation, limit=pair_limit, ascending=True))
@@ -145,134 +138,148 @@ def main() -> None:
     )
 
     metric_a, metric_b, metric_c, metric_d = st.columns([0.8, 1.7, 1, 1])
-    metric_a.metric("Universe Size", universe_count)
+    metric_a.metric("Universe size", universe_count)
     metric_b.metric("Window", f"{metadata['start_date']} → {metadata['end_date']}")
-    metric_c.metric("Average Pair Corr", f"{average_corr:.3f}")
-    metric_d.metric("Cointegrated Pairs", qualified_count if qualified_count else "n/a")
+    metric_c.metric("Average pair correlation", f"{average_corr:.3f}")
+    metric_d.metric("Cointegrated pairs", qualified_count if qualified_count else "n/a")
 
     status_left, status_right = st.columns([1.2, 1])
     with status_left:
         st.markdown(
             _status_card(
-                "Universe Provenance",
+                "Universe provenance",
                 [
                     f"{'Holdings as of' if is_etf_run else 'Official trade date'}: "
                     f"{metadata['universe']['official_source']['trade_date']}",
                     f"Ranking source: {ranking_type}",
                     f"Resolved tickers: {len(metadata['universe']['final_tickers'])}",
                 ],
+                emblem="chain",
+                tint="cyan",
             ),
             unsafe_allow_html=True,
         )
     with status_right:
         st.markdown(
             _status_card(
-                "Refresh Status",
+                "Refresh status",
                 [
                     f"Rows validated: {metadata['validation']['observed_rows']}",
                     f"Missing ratio: {metadata['validation']['observed_missing_ratio']:.2%}",
                     f"Workbook: {paths['excel_workbook'].name}",
                 ],
+                emblem="check",
+                tint="green",
             ),
             unsafe_allow_html=True,
         )
 
-    st.markdown("<div class='section-gap section-gap-tabs'></div>", unsafe_allow_html=True)
-
     heatmap_tab, rolling_tab, cointegration_tab, universe_tab, run_tab = st.tabs(
-        ["Heatmap", "Rolling Research", "Cointegration", "Universe", "Run Status"]
+        ["Heatmap", "Rolling research", "Cointegration", "Universe", "Run status"]
     )
 
     with heatmap_tab:
-        st.subheader("Historical Price and Correlation Heatmap")
-        market_control_left, market_control_right = st.columns([1.15, 1])
-        with market_control_left:
-            market_ticker = st.selectbox(
-                "Ticker",
-                options=tickers,
-                index=0,
-                key="heatmap_market_ticker",
+        with _panel(
+            "price",
+            "candles",
+            "Price action",
+            "Daily candles from yfinance when OHLC is available; local adjusted close otherwise.",
+            tint="green",
+        ):
+            market_control_left, market_control_right = st.columns([1.15, 1])
+            with market_control_left:
+                market_ticker = st.selectbox(
+                    "Ticker",
+                    options=tickers,
+                    index=0,
+                    key="heatmap_market_ticker",
+                )
+            with market_control_right:
+                market_range_label = st.radio(
+                    "Lookback",
+                    options=list(HEATMAP_MARKET_LOOKBACKS.keys()),
+                    index=0,
+                    key="heatmap_market_range",
+                    horizontal=True,
+                )
+            st.plotly_chart(
+                _build_market_chart(
+                    prices=prices,
+                    ticker=market_ticker,
+                    history_period=HEATMAP_MARKET_LOOKBACKS[market_range_label],
+                    lookback_label=market_range_label,
+                    refresh_token=price_refresh_token,
+                    visuals=config.visuals,
+                ),
+                width="stretch",
+                config={"displayModeBar": False},
+                theme=None,
             )
-        with market_control_right:
-            market_range_label = st.radio(
-                "Lookback",
-                options=list(HEATMAP_MARKET_LOOKBACKS.keys()),
-                index=0,
-                key="heatmap_market_range",
-                horizontal=True,
+
+        with _panel(
+            "heatmap",
+            "matrix",
+            "Correlation matrix",
+            f"Pearson correlation of daily log returns across the {universe_title} universe, scale fixed at -1 to +1.",
+            tint="blue",
+            delay=60,
+        ):
+            # Labels are sized in CSS from the chart's real width and this ticker count, and hidden
+            # once cells are too narrow for a readable label (colors and tooltips still carry the value).
+            hm_n = max(1, len(correlation.columns))
+            st.html(
+                f"<style>.st-key-panel_heatmap {{ --hm-n: {hm_n}; }}"
+                f"@container (max-width: {200 + hm_n * 15}px) {{ .st-key-panel_heatmap .heatmap-label {{ display: none; }} }}"
+                "</style>"
             )
-        st.caption(
-            "Candlestick view when OHLC data is available from yfinance; local adjusted-close line fallback otherwise."
-        )
-        st.plotly_chart(
-            _build_market_chart(
-                prices=prices,
-                ticker=market_ticker,
-                history_period=HEATMAP_MARKET_LOOKBACKS[market_range_label],
-                lookback_label=market_range_label,
-                refresh_token=price_refresh_token,
-                visuals=config.visuals,
-            ),
-            width="stretch",
-            config={"displayModeBar": False},
-            theme=None,
-        )
+            st.plotly_chart(
+                _build_heatmap(correlation, config.visuals),
+                width="stretch",
+                config={"displayModeBar": False},
+                theme=None,
+            )
 
-        st.markdown("<div class='section-gap section-gap-block'></div>", unsafe_allow_html=True)
-        st.plotly_chart(
-            _build_heatmap(correlation, config.visuals),
-            width="stretch",
-            config={"displayModeBar": False},
-            theme=None,
-        )
-
-        st.markdown("<div class='section-gap section-gap-block'></div>", unsafe_allow_html=True)
         strongest_col, weakest_col = st.columns(2)
         with strongest_col:
-            st.subheader("Strongest Pairs")
-            st.dataframe(
-                strongest_pairs,
-                width="stretch",
-                hide_index=True,
-                height=420,
-            )
+            with _panel("strongest", "strong", "Strongest pairs", "Highest correlations in the matrix", tint="cyan"):
+                st.dataframe(strongest_pairs, width="stretch", hide_index=True, height=420)
         with weakest_col:
-            st.subheader("Weakest Pairs")
-            st.dataframe(
-                weakest_pairs,
-                width="stretch",
-                hide_index=True,
-                height=420,
-            )
+            with _panel("weakest", "weak", "Weakest pairs", "Lowest correlations in the matrix", tint="rose", delay=60):
+                st.dataframe(weakest_pairs, width="stretch", hide_index=True, height=420)
 
-        st.markdown("<div class='section-gap section-gap-block'></div>", unsafe_allow_html=True)
-        st.subheader("Rolling Average Correlation")
-        window = st.select_slider(
-            "Rolling Window",
-            options=rolling_windows,
-            value=default_window,
-            key="avg_corr_window",
-        )
-        avg_corr = rolling_average_correlation(returns, window)
-        st.plotly_chart(
-            _build_line_chart(
-                avg_corr,
-                title=f"{universe_title} Universe {window}-Day Average Pairwise Correlation",
-                y_label="Correlation",
-                visuals=config.visuals,
-            ),
-            width="stretch",
-            config={"displayModeBar": False},
-            theme=None,
-        )
+        with _panel(
+            "rolling_avg",
+            "wave",
+            "Universe average correlation",
+            f"Average pairwise correlation across all {universe_title} names, not a single pair.",
+            tint="cyan",
+        ):
+            window = st.select_slider(
+                "Rolling window (days)",
+                options=rolling_windows,
+                value=default_window,
+                key="avg_corr_window",
+            )
+            avg_corr = rolling_average_correlation(returns, window)
+            st.plotly_chart(
+                _build_line_chart(
+                    avg_corr,
+                    title=f"{universe_title} Universe {window}-Day Average Pairwise Correlation",
+                    y_label="Correlation",
+                    visuals=config.visuals,
+                ),
+                width="stretch",
+                config={"displayModeBar": False},
+                theme=None,
+            )
 
     with rolling_tab:
-        st.subheader("Biggest Correlation Changes From Prior Run")
         if previous_correlation.empty or not previous_metadata:
-            st.info(
-                "Prior-run comparison becomes interactive after the next successful refresh preserves "
-                "a previous correlation snapshot."
-            )
+            with _panel("changes", "delta", "Biggest correlation changes since the prior run", tint="rose"):
+                st.info(
+                    "Prior-run comparison becomes interactive after the next successful refresh preserves "
+                    "a previous correlation snapshot."
+                )
         else:
             _render_correlation_changes(
                 current_correlation=correlation,
@@ -283,49 +290,51 @@ def main() -> None:
                 visuals=config.visuals,
             )
 
-        st.markdown("<div class='section-gap section-gap-block'></div>", unsafe_allow_html=True)
-        st.subheader("Pair Diagnostics")
-        pair_options = [item["pair"] for item in ranked_pairs(correlation, limit=50, ascending=False)]
-        pair_options += [
-            item["pair"]
-            for item in ranked_pairs(correlation, limit=50, ascending=True)
-            if item["pair"] not in pair_options
-        ]
-        if not pair_options:
-            st.info("Pair diagnostics are unavailable because the correlation matrix did not yield any valid pairs.")
-        else:
-            selected_pair = st.selectbox("Pair", options=pair_options, index=0)
-            rolling_window = st.select_slider(
-                "Rolling Pair Window",
-                options=rolling_windows,
-                value=default_window,
-                key="pair_window",
-            )
-            left, right = selected_pair.split(" vs ")
-            pair_series = pair_correlation_series(returns, left, right, rolling_window)
-            st.plotly_chart(
-                _build_line_chart(
-                    pair_series,
-                    title=f"{selected_pair} {rolling_window}-Day Rolling Correlation",
-                    y_label="Correlation",
-                    visuals=config.visuals,
-                ),
-                width="stretch",
-                config={"displayModeBar": False},
-                theme=None,
-            )
+        with _panel("pair_diag", "twin", "Pair diagnostics", "Rolling correlation for one pair over time", tint="blue"):
+            pair_options = [item["pair"] for item in ranked_pairs(correlation, limit=50, ascending=False)]
+            pair_options += [
+                item["pair"]
+                for item in ranked_pairs(correlation, limit=50, ascending=True)
+                if item["pair"] not in pair_options
+            ]
+            if not pair_options:
+                st.info("Pair diagnostics are unavailable because the correlation matrix did not yield any valid pairs.")
+            else:
+                pick_left, pick_right = st.columns([1.15, 1])
+                selected_pair = pick_left.selectbox("Pair", options=pair_options, index=0)
+                rolling_window = pick_right.select_slider(
+                    "Rolling pair window (days)",
+                    options=rolling_windows,
+                    value=default_window,
+                    key="pair_window",
+                )
+                left, right = selected_pair.split(" vs ")
+                pair_series = pair_correlation_series(returns, left, right, rolling_window)
+                st.plotly_chart(
+                    _build_line_chart(
+                        pair_series,
+                        title=f"{selected_pair} {rolling_window}-Day Rolling Correlation",
+                        y_label="Correlation",
+                        visuals=config.visuals,
+                        color_key="accent_2",
+                    ),
+                    width="stretch",
+                    config={"displayModeBar": False},
+                    theme=None,
+                )
 
-            snapshot = returns[[left, right]].tail(15).copy()
-            snapshot.index = snapshot.index.strftime("%Y-%m-%d")
-            st.dataframe(snapshot, width="stretch")
+                snapshot = returns[[left, right]].tail(15).copy()
+                snapshot.index = snapshot.index.strftime("%Y-%m-%d")
+                st.caption("Last 15 daily log returns for both legs")
+                st.dataframe(snapshot, width="stretch")
 
     with cointegration_tab:
-        st.subheader("Top 10 Cointegrated Pairs")
         if pairs_qualified.empty or not pairs_metadata:
-            st.info(
-                "Cointegration artifacts are unavailable. Run `scripts/run_pairs_cointegration.py` "
-                "or `scripts/update_dashboard.py` to populate this tab."
-            )
+            with _panel("coint", "tether", "Top 10 cointegrated pairs", tint="green"):
+                st.info(
+                    "Cointegration artifacts are unavailable. Run `scripts/run_pairs_cointegration.py` "
+                    "or `scripts/update_dashboard.py` to populate this tab."
+                )
         else:
             _render_cointegration_tab(
                 pairs_qualified,
@@ -335,67 +344,166 @@ def main() -> None:
             )
 
     with universe_tab:
-        st.subheader(f"Resolved {universe_title} Universe")
-        zero_share = metadata.get("zero_return_share") or {}
-        universe_view = universe.copy()
-        if zero_share:
-            universe_view["zero_return_days"] = universe_view["ticker"].map(zero_share)
-        st.dataframe(
-            universe_view,
-            width="stretch",
-            hide_index=True,
-            column_config={
-                "zero_return_days": st.column_config.NumberColumn(
-                    "Zero-return days", format="percent", help="Share of days with an unchanged price"
-                )
-            },
-        )
-        flag = float(metadata.get("zero_return_flag_threshold", 0.15))
-        flagged = sorted(
-            ((ticker, share) for ticker, share in zero_share.items() if share > flag),
-            key=lambda item: -item[1],
-        )
-        if flagged:
-            st.caption(
-                f"Above {flag:.0%} zero-return days (thin trading or local holidays; their correlations "
-                "with other names read low): "
-                + ", ".join(f"{ticker} {share:.0%}" for ticker, share in flagged)
+        with _panel(
+            "universe",
+            "ranks",
+            f"Resolved {universe_title} universe",
+            "Constituents in rank order, with the share of days each price did not move",
+            tint="violet",
+        ):
+            zero_share = metadata.get("zero_return_share") or {}
+            universe_view = universe.copy()
+            if zero_share:
+                universe_view["zero_return_days"] = universe_view["ticker"].map(zero_share)
+            st.dataframe(
+                universe_view,
+                width="stretch",
+                hide_index=True,
+                column_config={
+                    "zero_return_days": st.column_config.NumberColumn(
+                        "Zero-return days", format="percent", help="Share of days with an unchanged price"
+                    )
+                },
             )
-        substitutions = metadata["universe"].get("history_substitutions") or []
-        if substitutions:
-            st.caption(
-                "Replaced for short price history (listed after the window start, so keeping them "
-                "would shorten every pair's window): "
-                + "; ".join(
-                    f"{item['excluded']} (rank {item['excluded_rank']}, first traded "
-                    f"{item['first_price_date']}) → {item['replacement']} (rank {item['replacement_rank']})"
-                    for item in substitutions
-                )
+            flag = float(metadata.get("zero_return_flag_threshold", 0.15))
+            flagged = sorted(
+                ((ticker, share) for ticker, share in zero_share.items() if share > flag),
+                key=lambda item: -item[1],
             )
-        st.subheader("Source Lineage")
-        lineage = {
-            "official_source": metadata["universe"]["official_source"],
-            "ranking": metadata["universe"]["ranking"],
-            "history_substitutions": substitutions,
-        }
-        st.json(lineage, expanded=False)
+            if flagged:
+                st.caption(
+                    f"Above {flag:.0%} zero-return days (thin trading or local holidays; their correlations "
+                    "with other names read low): "
+                    + ", ".join(f"{ticker} {share:.0%}" for ticker, share in flagged)
+                )
+            substitutions = metadata["universe"].get("history_substitutions") or []
+            if substitutions:
+                st.caption(
+                    "Replaced for short price history (listed after the window start, so keeping them "
+                    "would shorten every pair's window): "
+                    + "; ".join(
+                        f"{item['excluded']} (rank {item['excluded_rank']}, first traded "
+                        f"{item['first_price_date']}) → {item['replacement']} (rank {item['replacement_rank']})"
+                        for item in substitutions
+                    )
+                )
+        with _panel(
+            "lineage",
+            "chain",
+            "Source lineage",
+            "Membership source, ranking source and any fallback that was used",
+            tint="blue",
+        ):
+            lineage = {
+                "official_source": metadata["universe"]["official_source"],
+                "ranking": metadata["universe"]["ranking"],
+                "history_substitutions": substitutions,
+            }
+            st.json(lineage, expanded=False)
 
     with run_tab:
-        st.subheader("Validation And Outputs")
-        outputs = pd.DataFrame(
-            [
-                {
-                    "artifact": name,
-                    "path": _display_path(path, config.root),
-                    "exists": path.exists(),
-                    "size_bytes": path.stat().st_size if path.exists() else None,
-                }
-                for name, path in {**required, **{k: v for k, v in optional.items() if v is not None}}.items()
-            ]
+        with _panel(
+            "outputs",
+            "check",
+            "Validation and outputs",
+            "Every artifact this dashboard reads, and whether it exists",
+            tint="green",
+        ):
+            outputs = pd.DataFrame(
+                [
+                    {
+                        "artifact": name,
+                        "path": _display_path(path, config.root),
+                        "exists": path.exists(),
+                        "size_bytes": path.stat().st_size if path.exists() else None,
+                    }
+                    for name, path in {**required, **{k: v for k, v in optional.items() if v is not None}}.items()
+                ]
+            )
+            st.dataframe(outputs, width="stretch", hide_index=True)
+        with _panel("metadata", "braces", "Metadata", "Full provenance record for the current run", tint="violet"):
+            st.json(metadata, expanded=False)
+
+    st.markdown(_footer(metadata, is_etf_run), unsafe_allow_html=True)
+
+
+@contextmanager
+def _panel(
+    key: str,
+    emblem: str,
+    title: str,
+    subtitle: str = "",
+    tint: str = "cyan",
+    delay: int = 0,
+) -> Iterator[None]:
+    """Shared panel shell: emblem badge, title, one-line subtitle, then the body."""
+    with st.container(key=f"panel_{key}"):
+        if delay:
+            st.html(f"<style>.st-key-panel_{key} {{ --delay: {int(delay)}ms; }}</style>")
+        st.markdown(panel_head(emblem, title, subtitle, tint), unsafe_allow_html=True)
+        yield
+
+
+def _hero(title: str, subtitle: str, correlation, metadata: dict, visuals: dict) -> str:
+    mark = brand_mark(correlation, visuals) if correlation is not None else ""
+    chips = ""
+    if metadata:
+        ranking = metadata.get("universe", {}).get("ranking", {})
+        fallback = bool(ranking.get("fallback_used"))
+        chips = (
+            '<div class="cd-chips">'
+            f'<span class="cd-chip"><span class="cd-chip-dot"></span>Data through <b>{_esc(metadata.get("end_date", "n/a"))}</b></span>'
+            f'<span class="cd-chip"><span class="cd-chip-dot" style="--chip:var(--{"warn" if fallback else "pos"})"></span>'
+            f'Ranking <b>{_esc(ranking.get("source_type") or "unresolved")}</b>{" (fallback)" if fallback else ""}</span>'
+            "</div>"
         )
-        st.dataframe(outputs, width="stretch", hide_index=True)
-        st.subheader("Metadata")
-        st.json(metadata, expanded=False)
+    return (
+        '<div class="cd-hero">'
+        f"{mark}"
+        '<div class="cd-hero-titles">'
+        f'<div class="cd-hero-title" role="heading" aria-level="1">{_esc(title)}</div>'
+        f'<p class="cd-hero-sub">{_esc(subtitle)}</p>'
+        "</div>"
+        f"{chips}"
+        "</div>"
+    )
+
+
+def _footer(metadata: dict, is_etf_run: bool) -> str:
+    sources = (
+        "fund holdings export and Yahoo Finance prices"
+        if is_etf_run
+        else "Nasdaq index weightings, Invesco QQQM holdings and Yahoo Finance prices"
+    )
+    return (
+        '<div class="cd-footer">'
+        f"<span><b>Data</b> {_esc(sources)}; returns and correlations computed locally.</span>"
+        f"<span><b>Last refresh</b> {_esc(metadata.get('created_at_utc', 'n/a'))}</span>"
+        "<span><b>Method</b> Pearson correlation of daily log returns; Engle-Granger cointegration.</span>"
+        "<span>Research only. Not investment advice.</span>"
+        "</div>"
+    )
+
+
+def _base_layout(visuals: dict, height: int, title: str | None = None) -> dict:
+    theme = plotly_theme(visuals)
+    layout = {
+        "height": height,
+        "paper_bgcolor": theme["clear"],
+        "plot_bgcolor": theme["plot_bg"],
+        "font": {"family": theme["ui_font"], "size": 12, "color": theme["ink_2"]},
+        "hoverlabel": hoverlabel(visuals),
+        "showlegend": False,
+    }
+    if title:
+        layout["title"] = {
+            "text": title,
+            "x": 0,
+            "xref": "paper",
+            "xanchor": "left",
+            "font": {"color": theme["ink"], "size": 14, "family": theme["ui_font"], "weight": 600},
+        }
+    return layout
 
 
 def _build_heatmap(correlation: pd.DataFrame, visuals: dict) -> go.Figure:
@@ -415,33 +523,64 @@ def _build_heatmap(correlation: pd.DataFrame, visuals: dict) -> go.Figure:
             zmin=-1,
             zmax=1,
             colorscale=colorscale,
+            xgap=1,
+            ygap=1,
             colorbar={
-                "title": {"text": "Corr", "font": {"color": theme["text_primary"], "size": 15}},
-                "tickfont": {"color": theme["text_primary"], "size": 12},
+                "title": {"text": "Corr", "font": {"color": theme["ink_2"], "size": 12}},
+                "tickfont": {"color": theme["ink_2"], "size": 11, "family": theme["mono_font"]},
+                "thickness": 12,
+                "outlinewidth": 0,
+                "tickvals": [-1, -0.5, 0, 0.5, 1],
             },
-            text=display_correlation.round(2).values,
+            text=_heatmap_labels(display_correlation),
             texttemplate="%{text}",
-            hovertemplate="X: %{x}<br>Y: %{y}<br>Corr: %{z:.4f}<extra></extra>",
+            textfont={"family": theme["mono_font"], "size": 10},
+            hovertemplate="<b>%{y} vs %{x}</b><br>Correlation  %{z:.3f}<extra></extra>",
         )
     )
     figure.update_layout(
-        height=max(900, len(display_correlation.index) * 18),
+        **_base_layout(visuals, height=_heatmap_height(len(display_correlation.index))),
         margin={"l": 22, "r": 22, "t": 54, "b": 48},
-        paper_bgcolor="rgba(0,0,0,0)",
-        plot_bgcolor="rgba(0,0,0,0)",
-        font={"family": theme["mono_font"], "size": 13, "color": theme["text_primary"]},
     )
     figure.update_xaxes(
         side="top",
         tickangle=-32,
         automargin=True,
-        tickfont={"color": theme["text_primary"], "size": 12},
+        showgrid=False,
+        tickfont={"color": theme["ink_2"], "size": 11, "family": theme["mono_font"]},
     )
     figure.update_yaxes(
         automargin=True,
-        tickfont={"color": theme["text_primary"], "size": 12},
+        showgrid=False,
+        tickfont={"color": theme["ink_2"], "size": 11, "family": theme["mono_font"]},
     )
     return figure
+
+
+# Above this many tickers the cells are too small for any label; values stay in the tooltip.
+HEATMAP_LABEL_LIMIT = 80
+
+
+def _heatmap_labels(correlation: pd.DataFrame) -> list[list[str]]:
+    """Compact cell labels that fit a narrow cell: ".87", "-.13", and "1" on the diagonal."""
+    if len(correlation.index) > HEATMAP_LABEL_LIMIT:
+        return [["" for _ in row] for row in correlation.values]
+
+    def label(value: float) -> str:
+        if pd.isna(value):
+            return ""
+        text = f"{value:.2f}"
+        if text in {"1.00", "-1.00"}:
+            return text[:-3]
+        return text.replace("0.", ".", 1)
+
+    return [[label(value) for value in row] for row in correlation.values]
+
+
+def _heatmap_height(count: int) -> int:
+    """Rows near-square with the cells: 24px each for a full universe, roomier for small ones."""
+    row = 24 if count >= 40 else 32
+    return max(520, count * row + 150)
 
 
 @st.cache_data(show_spinner=False)
@@ -478,6 +617,13 @@ def _fetch_market_ohlc(
     return frame[selected_columns]
 
 
+def _gradient_fill(theme: dict, color_key: str) -> dict:
+    return {
+        "type": "vertical",
+        "colorscale": [[0.0, theme["clear"]], [1.0, theme[f"{color_key}_fill"]]],
+    }
+
+
 def _build_market_chart(
     prices: pd.DataFrame,
     ticker: str,
@@ -489,11 +635,17 @@ def _build_market_chart(
     theme = plotly_theme(visuals)
     local_series = prices[ticker].dropna() if ticker in prices.columns else pd.Series(dtype=float)
     x_tickformat = "%b %Y"
-    if lookback_label == "1w":
-        x_tickformat = "%d %b"
-    elif lookback_label == "3m":
+    if lookback_label in {"1w", "3m"}:
         x_tickformat = "%d %b"
 
+    layout = _build_time_series_layout(
+        title=f"{ticker} Historical Price",
+        y_label="Price (USD)",
+        height=380,
+        y_gridcolor=theme["grid"],
+        x_tickformat=x_tickformat,
+        visuals=visuals,
+    )
     try:
         market_frame = _fetch_market_ohlc(ticker, history_period, refresh_token)
     except Exception:
@@ -503,24 +655,14 @@ def _build_market_chart(
                 x=local_series.index,
                 y=local_series.values,
                 mode="lines",
-                line={"width": 2.8, "color": theme["accent_cyan"]},
+                line={"width": 2, "color": theme["accent"]},
                 fill="tozeroy",
-                fillcolor=theme["line_fill"],
-                hovertemplate="%{x|%Y-%m-%d}<br>Adj Close: %{y:.2f}<extra></extra>",
+                fillgradient=_gradient_fill(theme, "accent"),
+                hovertemplate="Adj close  %{y:,.2f}<extra></extra>",
                 name=f"{ticker} adjusted close",
             )
         )
-        figure.update_layout(
-            **_build_time_series_layout(
-                title=f"{ticker} Historical Price",
-                y_label="Price (USD)",
-                height=360,
-                y_gridcolor=theme["y_grid_soft"],
-                x_tickformat=x_tickformat,
-                visuals=visuals,
-            ),
-            showlegend=False,
-        )
+        figure.update_layout(**layout)
         source_label = "Source: local adjusted-close refresh artifact"
     else:
         figure = go.Figure()
@@ -531,47 +673,32 @@ def _build_market_chart(
                 high=market_frame["High"],
                 low=market_frame["Low"],
                 close=market_frame["Close"],
-                increasing={
-                    "line": {"color": theme["success_color"]},
-                    "fillcolor": theme["success_fill"],
-                },
-                decreasing={
-                    "line": {"color": theme["danger_color"]},
-                    "fillcolor": theme["danger_fill"],
-                },
+                increasing={"line": {"color": theme["pos"], "width": 1.2}, "fillcolor": theme["pos_fill"]},
+                decreasing={"line": {"color": theme["neg"], "width": 1.2}, "fillcolor": theme["neg_fill"]},
                 hovertemplate=(
-                    "%{x|%Y-%m-%d}<br>Open: %{open:.2f}<br>High: %{high:.2f}<br>"
-                    "Low: %{low:.2f}<br>Close: %{close:.2f}<extra></extra>"
+                    "Open  %{open:,.2f}<br>High  %{high:,.2f}<br>"
+                    "Low  %{low:,.2f}<br>Close  %{close:,.2f}<extra></extra>"
                 ),
                 name=ticker,
             )
         )
-        figure.update_layout(
-            **_build_time_series_layout(
-                title=f"{ticker} Historical Price",
-                y_label="Price (USD)",
-                height=360,
-                y_gridcolor=theme["y_grid_soft"],
-                x_tickformat=x_tickformat,
-                visuals=visuals,
-            ),
-            showlegend=False,
-        )
+        figure.update_layout(**layout)
         figure.update_xaxes(rangeslider={"visible": False})
         source_label = "Source: yfinance OHLC"
 
     figure.add_annotation(
         xref="paper",
         yref="paper",
-        x=0.995,
-        y=1.08,
+        x=1,
+        y=1.1,
         xanchor="right",
         text=source_label,
         showarrow=False,
-        font={"color": theme["text_primary"], "size": 12},
+        font={"color": theme["ink_2"], "size": 11},
         bgcolor=theme["annotation_bg"],
         bordercolor=theme["annotation_border"],
         borderwidth=1,
+        borderpad=4,
     )
     return figure
 
@@ -586,7 +713,8 @@ def _render_correlation_changes(
 ) -> None:
     changes = correlation_change_table(current_correlation, previous_correlation)
     if changes.empty:
-        st.info("No overlapping ticker pairs were available to compare against the prior run.")
+        with _panel("changes", "delta", "Biggest correlation changes since the prior run", tint="rose"):
+            st.info("No overlapping ticker pairs were available to compare against the prior run.")
         return
 
     current_tickers = set(current_metadata.get("tickers", list(current_correlation.columns)))
@@ -599,120 +727,136 @@ def _render_correlation_changes(
 
     largest_move = changes.iloc[0]
     metric_left, metric_mid, metric_right = st.columns(3)
-    metric_left.metric("Pairs Compared", len(changes))
-    metric_mid.metric("Largest |Delta|", f"{largest_move['abs_change']:.3f}")
-    metric_right.metric("Median |Delta|", f"{changes['abs_change'].median():.3f}")
+    metric_left.metric("Pairs compared", len(changes))
+    metric_mid.metric("Largest |delta|", f"{largest_move['abs_change']:.3f}")
+    metric_right.metric("Median |delta|", f"{changes['abs_change'].median():.3f}")
 
     run_left, run_mid, run_right = st.columns([1.15, 1.15, 1])
     with run_left:
         st.markdown(
             _status_card(
-                "Current Run",
+                "Current run",
                 [
                     f"Created: {current_metadata.get('created_at_utc', 'n/a')}",
                     f"Window: {current_metadata.get('start_date', 'n/a')} to {current_metadata.get('end_date', 'n/a')}",
                     f"Tickers: {len(current_tickers)}",
                 ],
+                emblem="clock",
+                tint="cyan",
             ),
             unsafe_allow_html=True,
         )
     with run_mid:
         st.markdown(
             _status_card(
-                "Prior Run",
+                "Prior run",
                 [
                     f"Created: {previous_metadata.get('created_at_utc', 'n/a')}",
                     f"Window: {previous_metadata.get('start_date', 'n/a')} to {previous_metadata.get('end_date', 'n/a')}",
                     f"Tickers: {len(previous_tickers)}",
                 ],
+                emblem="clock",
+                tint="blue",
             ),
             unsafe_allow_html=True,
         )
     with run_right:
         st.markdown(
             _status_card(
-                "Universe Overlap",
+                "Universe overlap",
                 [
                     f"Common tickers: {len(overlap_tickers)}",
                     f"Added: {_summarize_tickers(added_tickers)}",
                     f"Removed: {_summarize_tickers(removed_tickers)}",
                 ],
+                emblem="venn",
+                tint="violet",
             ),
             unsafe_allow_html=True,
         )
 
-    focus_left, focus_right = st.columns([1.2, 1])
-    with focus_left:
-        focus = st.radio(
-            "Focus",
-            options=[
-                "Largest absolute moves",
-                "Correlation increases",
-                "Correlation decreases",
-            ],
-            index=0,
-            horizontal=True,
-            key="correlation_change_focus",
-        )
-    with focus_right:
-        max_rows = min(25, len(changes))
-        default_rows = min(10, max_rows)
-        top_n = st.slider(
-            "Pairs To Surface",
-            min_value=1,
-            max_value=max_rows,
-            value=default_rows,
-            step=1,
-            key="correlation_change_top_n",
-        )
-
-    display_changes = _filter_correlation_changes(changes, focus, top_n)
-    st.plotly_chart(
-        _build_correlation_change_chart(display_changes, focus, visuals),
-        width="stretch",
-        config={"displayModeBar": False},
-        theme=None,
-    )
-
-    display_table = display_changes[
-        ["pair", "previous_correlation", "current_correlation", "change", "abs_change"]
-    ].rename(
-        columns={
-            "previous_correlation": "prior_corr",
-            "current_correlation": "current_corr",
-        }
-    )
-    for column in ["prior_corr", "current_corr", "change", "abs_change"]:
-        display_table[column] = display_table[column].round(3)
-    st.dataframe(display_table, width="stretch", hide_index=True, height=320)
-
-    detail_pair = st.selectbox(
-        "Pair Change Detail",
-        options=changes["pair"].tolist(),
-        index=0,
-        key="correlation_change_detail_pair",
-    )
-    detail = changes.loc[changes["pair"] == detail_pair].iloc[0]
-    detail_left, detail_right = st.columns([1.2, 1])
-    with detail_left:
-        st.markdown(
-            _status_card(
-                "Pair Delta Readout",
-                [
-                    f"Pair: {detail['pair']}",
-                    f"Prior correlation: {detail['previous_correlation']:.3f}",
-                    f"Current correlation: {detail['current_correlation']:.3f}",
-                    f"Net change: {detail['change']:+.3f}",
-                    f"Absolute move: {detail['abs_change']:.3f}",
+    with _panel(
+        "changes",
+        "delta",
+        "Biggest correlation changes since the prior run",
+        "Current minus prior correlation for every pair present in both runs",
+        tint="rose",
+    ):
+        focus_left, focus_right = st.columns([1.2, 1])
+        with focus_left:
+            focus = st.radio(
+                "Focus",
+                options=[
+                    "Largest absolute moves",
+                    "Correlation increases",
+                    "Correlation decreases",
                 ],
-            ),
-            unsafe_allow_html=True,
+                index=0,
+                horizontal=True,
+                key="correlation_change_focus",
+            )
+        with focus_right:
+            max_rows = min(25, len(changes))
+            default_rows = min(10, max_rows)
+            top_n = st.slider(
+                "Pairs to surface",
+                min_value=1,
+                max_value=max_rows,
+                value=default_rows,
+                step=1,
+                key="correlation_change_top_n",
+            )
+
+        display_changes = _filter_correlation_changes(changes, focus, top_n)
+        st.plotly_chart(
+            _build_correlation_change_chart(display_changes, focus, visuals),
+            width="stretch",
+            config={"displayModeBar": False},
+            theme=None,
         )
-    with detail_right:
-        st.caption(
-            "Positive deltas mean the pair became more correlated since the prior refresh; "
-            "negative deltas mean the relationship weakened or moved further negative."
+
+        display_table = display_changes[
+            ["pair", "previous_correlation", "current_correlation", "change", "abs_change"]
+        ].rename(
+            columns={
+                "previous_correlation": "prior_corr",
+                "current_correlation": "current_corr",
+            }
         )
+        for column in ["prior_corr", "current_corr", "change", "abs_change"]:
+            display_table[column] = display_table[column].round(3)
+        st.dataframe(display_table, width="stretch", hide_index=True, height=320)
+
+    with _panel("change_detail", "delta", "Pair change detail", "Prior and current correlation for one pair", tint="amber"):
+        detail_pair = st.selectbox(
+            "Pair",
+            options=changes["pair"].tolist(),
+            index=0,
+            key="correlation_change_detail_pair",
+        )
+        detail = changes.loc[changes["pair"] == detail_pair].iloc[0]
+        detail_left, detail_right = st.columns([1.2, 1])
+        with detail_left:
+            st.markdown(
+                _status_card(
+                    "Pair delta readout",
+                    [
+                        f"Pair: {detail['pair']}",
+                        f"Prior correlation: {detail['previous_correlation']:.3f}",
+                        f"Current correlation: {detail['current_correlation']:.3f}",
+                        f"Net change: {detail['change']:+.3f}",
+                        f"Absolute move: {detail['abs_change']:.3f}",
+                    ],
+                    emblem="delta",
+                    tint="amber",
+                ),
+                unsafe_allow_html=True,
+            )
+        with detail_right:
+            st.caption(
+                "Positive deltas mean the pair became more correlated since the prior refresh; "
+                "negative deltas mean the relationship weakened or moved further negative."
+            )
 
 
 def _filter_correlation_changes(changes: pd.DataFrame, focus: str, top_n: int) -> pd.DataFrame:
@@ -728,53 +872,44 @@ def _filter_correlation_changes(changes: pd.DataFrame, focus: str, top_n: int) -
 def _build_correlation_change_chart(changes: pd.DataFrame, focus: str, visuals: dict) -> go.Figure:
     theme = plotly_theme(visuals)
     chart_data = changes.sort_values("change", ascending=True)
-    colors = [theme["danger_color"] if value < 0 else theme["success_color"] for value in chart_data["change"]]
+    colors = [theme["neg"] if value < 0 else theme["pos"] for value in chart_data["change"]]
     figure = go.Figure()
     figure.add_trace(
         go.Bar(
             x=chart_data["change"],
             y=chart_data["pair"],
             orientation="h",
-            marker={"color": colors, "line": {"color": theme["bar_border"], "width": 1}},
-            customdata=chart_data[["previous_correlation", "current_correlation", "abs_change"]].to_numpy(),
+            marker={"color": colors, "line": {"width": 0}, "cornerradius": 3},
+            customdata=list(zip(
+                chart_data["previous_correlation"].round(3),
+                chart_data["current_correlation"].round(3),
+                # Signed strings: plotly.js rejects a "+" sign flag in hover formats.
+                chart_data["change"].map(lambda value: f"{value:+.3f}"),
+            )),
             hovertemplate=(
-                "%{y}<br>Delta: %{x:+.3f}<br>Prior: %{customdata[0]:.3f}<br>"
-                "Current: %{customdata[1]:.3f}<br>|Delta|: %{customdata[2]:.3f}<extra></extra>"
+                "<b>%{y}</b><br>Change  %{customdata[2]}<br>Prior  %{customdata[0]:.3f}<br>"
+                "Current  %{customdata[1]:.3f}<extra></extra>"
             ),
         )
     )
-    figure.add_vline(x=0, line_width=1, line_color=theme["axis_zero"])
+    figure.add_vline(x=0, line_width=1, line_color=theme["zero"])
     figure.update_layout(
-        title={"text": focus, "x": 0.5, "xanchor": "center"},
+        **_base_layout(visuals, height=max(320, len(chart_data) * 34 + 120), title=focus),
         margin={"l": 86, "r": 24, "t": 60, "b": 76},
-        height=max(320, len(chart_data) * 36 + 120),
-        paper_bgcolor="rgba(0,0,0,0)",
-        plot_bgcolor=theme["plot_bg"],
-        font={"family": theme["ui_font"], "size": 13, "color": theme["text_primary"]},
-        title_font={"color": theme["text_primary"], "size": 22},
+        bargap=0.32,
+        hovermode="closest",
         xaxis={
-            "title": {
-                "text": "Correlation Change",
-                "font": {"color": theme["text_primary"], "size": 15},
-                "standoff": 20,
-            },
-            "tickfont": {"color": theme["text_primary"], "size": 12},
-            "gridcolor": theme["x_grid"],
-            "zerolinecolor": theme["axis_zero"],
+            "title": {"text": "Correlation change", "font": {"color": theme["ink_2"], "size": 12}, "standoff": 20},
+            "tickfont": {"color": theme["ink_2"], "size": 11, "family": theme["mono_font"]},
+            "gridcolor": theme["grid"],
+            "zeroline": False,
             "automargin": True,
-            "ticks": "outside",
         },
         yaxis={
-            "title": {
-                "text": "Pair",
-                "font": {"color": theme["text_primary"], "size": 15},
-                "standoff": 14,
-            },
-            "tickfont": {"color": theme["text_primary"], "size": 12},
+            "title": {"text": "Pair", "font": {"color": theme["ink_2"], "size": 12}, "standoff": 14},
+            "tickfont": {"color": theme["ink"], "size": 11, "family": theme["mono_font"]},
             "automargin": True,
         },
-        hovermode="y unified",
-        showlegend=False,
     )
     return figure
 
@@ -800,40 +935,34 @@ def _render_cointegration_tab(
     analysis_window = pairs_metadata.get("analysis_window", {})
     counts = pairs_metadata.get("counts", {})
     passed_lines = [
-        f"Engle-Granger p-value < {thresholds.get('cointegration_p_threshold', 'n/a')}",
-        f"ADF statistic < {thresholds.get('adf_stat_threshold', 'n/a')}",
+        f"Engle-Granger p-value: < {thresholds.get('cointegration_p_threshold', 'n/a')}",
+        f"ADF statistic: < {thresholds.get('adf_stat_threshold', 'n/a')}",
         f"Effective overlap floor: {thresholds.get('minimum_rows_effective', 'n/a')} trading days",
     ]
     if thresholds.get("require_nonstationary_legs"):
         stationary = ", ".join(item["ticker"] for item in pairs_metadata.get("stationary_legs", [])) or "none"
         passed_lines.append(
-            f"Both legs trend (price-level ADF p ≥ {thresholds.get('leg_adf_p_threshold', 0.05)}); "
+            f"Both legs trend: price-level ADF p ≥ {thresholds.get('leg_adf_p_threshold', 0.05)}; "
             f"{counts.get('pairs_excluded_stationary_leg', 0)} pairs excluded; range-bound: {stationary}"
         )
 
     metric_left, metric_mid, metric_right = st.columns(3)
-    metric_left.metric("Qualified Pairs", pairs_metadata["counts"]["pairs_qualified"])
+    metric_left.metric("Qualified pairs", pairs_metadata["counts"]["pairs_qualified"])
     metric_mid.metric(
-        "Analysis Window",
+        "Analysis window",
         f"{analysis_window.get('start_date', 'n/a')} → {analysis_window.get('end_date', 'n/a')}",
     )
     metric_right.metric(
-        "Test Lookback", period_label(str(pairs_metadata.get("history_period", "n/a"))).upper()
+        "Test lookback", period_label(str(pairs_metadata.get("history_period", "n/a"))).upper()
     )
 
     summary_col, definition_col = st.columns([1.5, 1])
     with summary_col:
-        st.markdown(
-            _status_card(
-                "What Passed",
-                passed_lines,
-            ),
-            unsafe_allow_html=True,
-        )
+        st.markdown(_status_card("What passed", passed_lines, emblem="check", tint="green"), unsafe_allow_html=True)
     with definition_col:
         st.markdown(
             _definition_card(
-                "Threshold Guide",
+                "Threshold guide",
                 [
                     ("Engle-Granger p-value", definitions.get("cointegration_p_threshold", "")),
                     ("ADF statistic", definitions.get("adf_stat_threshold", "")),
@@ -872,46 +1001,63 @@ def _render_cointegration_tab(
     }.items():
         if column in display_table.columns:
             display_table[column] = display_table[column].round(decimals)
-    st.dataframe(
-        display_table,
-        width="stretch",
-        hide_index=True,
-        height=420,
-    )
+    with _panel(
+        "coint",
+        "tether",
+        f"Top {top_limit} cointegrated pairs",
+        "Pairs whose price spread tends to revert to its mean, ranked by test strength",
+        tint="green",
+    ):
+        st.dataframe(display_table, width="stretch", hide_index=True, height=420)
 
     if pairs_spreads.empty:
         return
 
-    pair_options = top_pairs["pair"].tolist()
-    selected_pair = st.selectbox("Top Pair Detail", options=pair_options, index=0, key="cointegration_pair")
-    pair_history = pairs_spreads.loc[pairs_spreads["pair"] == selected_pair].copy()
-    pair_row = top_pairs.loc[top_pairs["pair"] == selected_pair].iloc[0]
+    with _panel(
+        "spread",
+        "tether",
+        "Spread detail",
+        "Rolling z-score of the hedged spread; dotted lines mark plus and minus 2",
+        tint="cyan",
+    ):
+        pair_options = top_pairs["pair"].tolist()
+        selected_pair = st.selectbox("Pair", options=pair_options, index=0, key="cointegration_pair")
+        pair_history = pairs_spreads.loc[pairs_spreads["pair"] == selected_pair].copy()
+        pair_row = top_pairs.loc[top_pairs["pair"] == selected_pair].iloc[0]
 
-    detail_left, detail_right = st.columns([1.5, 1])
-    with detail_left:
-        st.plotly_chart(
-            _build_spread_chart(pair_history, selected_pair, pair_row, visuals),
-            width="stretch",
-            config={"displayModeBar": False},
-            theme=None,
-        )
-    with detail_right:
-        st.markdown(
-            _status_card(
-                "Pair Readout",
-                [
-                    f"Orientation: {pair_row['selected_orientation']}",
-                    f"Current z-score: {pair_row['latest_zscore']:.2f}",
-                    f"Half-life: {pair_row['half_life']:.2f} days" if pd.notna(pair_row["half_life"]) else "Half-life: n/a",
-                    f"Cointegration p-value: {pair_row['coint_p_value']:.4f}",
-                    f"ADF statistic: {pair_row['adf_stat']:.3f}",
-                ],
-            ),
-            unsafe_allow_html=True,
-        )
+        detail_left, detail_right = st.columns([1.5, 1])
+        with detail_left:
+            st.plotly_chart(
+                _build_spread_chart(pair_history, selected_pair, pair_row, visuals),
+                width="stretch",
+                config={"displayModeBar": False},
+                theme=None,
+            )
+        with detail_right:
+            st.markdown(
+                _status_card(
+                    "Pair readout",
+                    [
+                        f"Orientation: {pair_row['selected_orientation']}",
+                        f"Current z-score: {pair_row['latest_zscore']:+.2f}",
+                        f"Half-life: {pair_row['half_life']:.2f} days" if pd.notna(pair_row["half_life"]) else "Half-life: n/a",
+                        f"Cointegration p-value: {pair_row['coint_p_value']:.4f}",
+                        f"ADF statistic: {pair_row['adf_stat']:.3f}",
+                    ],
+                    emblem="tether",
+                    tint="cyan",
+                ),
+                unsafe_allow_html=True,
+            )
 
 
-def _build_line_chart(series: pd.Series, title: str, y_label: str, visuals: dict) -> go.Figure:
+def _build_line_chart(
+    series: pd.Series,
+    title: str,
+    y_label: str,
+    visuals: dict,
+    color_key: str = "accent",
+) -> go.Figure:
     theme = plotly_theme(visuals)
     figure = go.Figure()
     figure.add_trace(
@@ -919,10 +1065,10 @@ def _build_line_chart(series: pd.Series, title: str, y_label: str, visuals: dict
             x=series.index,
             y=series.values,
             mode="lines",
-            line={"width": 3, "color": theme["accent_amber"]},
+            line={"width": 2, "color": theme[color_key]},
             fill="tozeroy",
-            fillcolor=theme["amber_fill"],
-            hovertemplate="%{x|%Y-%m-%d}<br>Value: %{y:.3f}<extra></extra>",
+            fillgradient=_gradient_fill(theme, color_key),
+            hovertemplate="Correlation  %{y:.3f}<extra></extra>",
         )
     )
     figure.update_layout(
@@ -931,10 +1077,9 @@ def _build_line_chart(series: pd.Series, title: str, y_label: str, visuals: dict
             y_label=y_label,
             height=420,
             y_range=[-1, 1],
-            y_gridcolor=theme["y_grid_strong"],
+            y_gridcolor=theme["grid_strong"],
             visuals=visuals,
         ),
-        showlegend=False,
     )
     return figure
 
@@ -952,42 +1097,43 @@ def _build_spread_chart(
             x=pair_history["date"],
             y=pair_history["zscore"],
             mode="lines",
-            line={"width": 2.8, "color": theme["success_color"]},
+            line={"width": 2, "color": theme["accent"]},
             name="Z-score",
-            hovertemplate="%{x|%Y-%m-%d}<br>Z-score: %{y:.2f}<extra></extra>",
+            hovertemplate="Z-score  %{y:.2f}<extra></extra>",
         )
     )
-    figure.add_hline(y=0, line_width=1, line_color=theme["axis_zero"])
-    figure.add_hline(y=2, line_dash="dot", line_color=theme["accent_amber"])
-    figure.add_hline(y=-2, line_dash="dot", line_color=theme["accent_amber"])
+    figure.add_hline(y=0, line_width=1, line_color=theme["zero"])
+    figure.add_hline(y=2, line_dash="dot", line_width=1.2, line_color=theme["warn"])
+    figure.add_hline(y=-2, line_dash="dot", line_width=1.2, line_color=theme["warn"])
     figure.update_layout(
         **_build_time_series_layout(
             title=f"{pair_name} spread z-score",
             y_label="Z-score",
             height=420,
-            y_gridcolor=theme["y_grid_soft"],
+            y_gridcolor=theme["grid"],
             visuals=visuals,
         ),
-        showlegend=False,
     )
     annotation = (
-        f"p={pair_row['coint_p_value']:.4f} | ADF={pair_row['adf_stat']:.3f} | "
-        f"half-life={pair_row['half_life']:.2f}d"
+        f"p {pair_row['coint_p_value']:.4f} · ADF {pair_row['adf_stat']:.3f} · "
+        f"half-life {pair_row['half_life']:.2f}d"
         if pd.notna(pair_row["half_life"])
-        else f"p={pair_row['coint_p_value']:.4f} | ADF={pair_row['adf_stat']:.3f}"
+        else f"p {pair_row['coint_p_value']:.4f} · ADF {pair_row['adf_stat']:.3f}"
     )
     figure.add_annotation(
         xref="paper",
         yref="paper",
-        x=0.99,
-        y=0.98,
+        x=1,
+        y=1,
         xanchor="right",
+        yanchor="bottom",
         text=annotation,
         showarrow=False,
-        font={"color": theme["text_primary"], "size": 12},
+        font={"color": theme["ink_2"], "size": 11, "family": theme["mono_font"]},
         bgcolor=theme["annotation_bg"],
         bordercolor=theme["annotation_border"],
         borderwidth=1,
+        borderpad=4,
     )
     return figure
 
@@ -1003,43 +1149,37 @@ def _build_time_series_layout(
 ) -> dict:
     theme = plotly_theme(visuals)
     yaxis = {
-        "title": {
-            "text": y_label,
-            "font": {"color": theme["text_primary"], "size": 15},
-            "standoff": 22,
-        },
-        "tickfont": {"color": theme["text_primary"], "size": 12},
+        "title": {"text": y_label, "font": {"color": theme["ink_2"], "size": 12}, "standoff": 22},
+        "tickfont": {"color": theme["ink_2"], "size": 11, "family": theme["mono_font"]},
         "gridcolor": y_gridcolor,
-        "zerolinecolor": theme["axis_zero"],
+        "zerolinecolor": theme["zero"],
         "automargin": True,
-        "ticks": "outside",
         "ticklabelposition": "outside",
     }
     if y_range is not None:
         yaxis["range"] = y_range
 
     return {
-        "title": {"text": title, "x": 0.5, "xanchor": "center"},
+        **_base_layout(visuals, height=height, title=title),
         "margin": {"l": 86, "r": 24, "t": 62, "b": 76},
-        "height": height,
-        "paper_bgcolor": "rgba(0,0,0,0)",
-        "plot_bgcolor": theme["plot_bg"],
-        "title_font": {"color": theme["text_primary"], "size": 22},
         "xaxis": {
-            "title": {
-                "text": "Date",
-                "font": {"color": theme["text_primary"], "size": 15},
-                "standoff": 22,
-            },
-            "tickfont": {"color": theme["text_primary"], "size": 12},
-            "gridcolor": theme["x_grid"],
+            "title": {"text": "Date", "font": {"color": theme["ink_2"], "size": 12}, "standoff": 22},
+            "tickfont": {"color": theme["ink_2"], "size": 11, "family": theme["mono_font"]},
+            "gridcolor": theme["grid"],
             "automargin": True,
-            "ticks": "outside",
             "tickformat": x_tickformat,
+            "hoverformat": "%a %d %b %Y",
+            # Crosshair: a thin dotted spike that follows the cursor.
+            "showspikes": True,
+            "spikemode": "across",
+            "spikesnap": "cursor",
+            "spikethickness": -1,  # negative: no contrasting outline under the spike
+            "spikedash": "dot",
+            "spikecolor": theme["spike"],
         },
         "yaxis": yaxis,
-        "font": {"family": theme["ui_font"], "size": 13, "color": theme["text_primary"]},
-        "hovermode": "x unified",
+        "hovermode": "x",  # single-series charts; "x unified" overrides the spike styling
+        "spikedistance": -1,
     }
 
 
@@ -1048,26 +1188,42 @@ def _esc(value: object) -> str:
     return html.escape(str(value))
 
 
-def _definition_card(title: str, entries: list[tuple[str, str]]) -> str:
+def _definition_card(
+    title: str,
+    entries: list[tuple[str, str]],
+    emblem: str = "gauge",
+    tint: str = "amber",
+) -> str:
     items = "".join(
         f"<li><strong>{_esc(label)}:</strong> {_esc(definition)}</li>"
         for label, definition in entries
         if definition
     )
     return (
-        "<div class='definition-card'>"
-        f"<h4>{_esc(title)}</h4>"
-        f"<ul>{items}</ul>"
+        "<div class='cd-card'>"
+        f"{panel_head(emblem, title, tint=tint)}"
+        f"<ul class='cd-defs'>{items}</ul>"
         "</div>"
     )
 
 
-def _status_card(title: str, lines: list[str]) -> str:
-    items = "".join(f"<li>{_esc(line)}</li>" for line in lines)
+def _status_card(title: str, lines: list[str], emblem: str = "check", tint: str = "cyan") -> str:
+    """Card with label/value rows; each line is "Label: value" (or a bare value)."""
+    rows = ""
+    for line in lines:
+        label, sep, value = str(line).partition(": ")
+        if not sep:
+            label, value = "", label
+        rows += (
+            "<li class='cd-row'>"
+            f"<span class='cd-row-label'>{_esc(label)}</span>"
+            f"<span class='cd-row-value'>{_esc(value)}</span>"
+            "</li>"
+        )
     return (
-        "<div class='status-card'>"
-        f"<h4>{_esc(title)}</h4>"
-        f"<ul>{items}</ul>"
+        "<div class='cd-card'>"
+        f"{panel_head(emblem, title, tint=tint)}"
+        f"<ul class='cd-rows'>{rows}</ul>"
         "</div>"
     )
 

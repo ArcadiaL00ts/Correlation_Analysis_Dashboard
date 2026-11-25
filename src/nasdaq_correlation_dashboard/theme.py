@@ -1,65 +1,105 @@
 from __future__ import annotations
 
-# Dashboard theme tokens, Plotly palette and injected Streamlit CSS.
+# Dashboard theme: design tokens, Plotly palette, Streamlit base theme and injected CSS.
+# Token groups follow the shared dashboard design system (surfaces, lines, ink, signal);
+# `config/dashboard_config.json` -> `visuals` overrides any of them at runtime.
 
-TERMINAL_VISUAL_DEFAULTS = {
-    "accent_cyan": "#58C8FF",
-    "accent_amber": "#7BA9FF",
-    "success_color": "#22C55E",
-    "danger_color": "#FB7185",
-    "panel_bg_rgba": "rgba(10, 22, 40, 0.78)",
-    "hover_glow_rgba": "rgba(88, 200, 255, 0.30)",
-    "ascii_opacity": 0.15,
-    "ascii_density": 24,
-    "hero_font": "Bebas Neue",
-    "ui_font": "Sora",
+VISUAL_DEFAULTS: dict[str, str] = {
+    # Surfaces: each step slightly lighter.
+    "bg": "#0A0D12",
+    "surface": "#0E1218",
+    "surface_2": "#141922",
+    "surface_3": "#1B212C",
+    # Lines: low-contrast borders.
+    "line": "rgba(255,255,255,0.07)",
+    "line_2": "rgba(255,255,255,0.12)",
+    # Text: primary, secondary, muted (never a series color).
+    "ink": "#E8ECF2",
+    "ink_2": "#9AA3B2",
+    "ink_3": "#7A8394",
+    # Signal colors with reserved meanings.
+    "accent": "#58C8FF",
+    "accent_2": "#7BA9FF",
+    "pos": "#22C55E",
+    "neg": "#FB7185",
+    "warn": "#E9B949",
+    # Type.
+    "ui_font": "Inter",
     "mono_font": "JetBrains Mono",
-    "text_primary": "#EAF2FF",
-    "text_muted": "#A4B8D7",
+    # Correlation heatmap scale (red -> neutral -> blue); domain stays locked to [-1, 1].
     "heatmap_min_color": "#7D3A4A",
     "heatmap_mid_color": "#DCE7F6",
     "heatmap_max_color": "#1C8BC4",
-    "background_start": "#071222",
-    "background_end": "#152B47",
-    "panel_border": "rgba(122,157,205,0.34)",
 }
+
+# Panel emblem tints (identity only; text never uses them).
+TINTS: dict[str, str] = {
+    "cyan": "#58C8FF",
+    "blue": "#7BA9FF",
+    "green": "#22C55E",
+    "rose": "#FB7185",
+    "amber": "#E9B949",
+    "violet": "#A78BFA",
+}
+
+FONT_CSS_URL = (
+    "https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700"
+    "&family=JetBrains+Mono:wght@400;500;600&display=swap"
+)
 
 
 def resolve_theme_tokens(visuals: dict) -> dict[str, str]:
-    def _text(name: str) -> str:
+    """Defaults overlaid with any non-empty `visuals` override."""
+    tokens: dict[str, str] = {}
+    for name, default in VISUAL_DEFAULTS.items():
         value = visuals.get(name)
-        if value is None or str(value).strip() == "":
-            return str(TERMINAL_VISUAL_DEFAULTS[name])
-        return str(value).strip()
+        tokens[name] = default if value is None or str(value).strip() == "" else str(value).strip()
+    return tokens
 
+
+def hex_to_rgba(color: str, alpha: float) -> str:
+    value = color.lstrip("#")
+    red, green, blue = (int(value[i : i + 2], 16) for i in (0, 2, 4))
+    return f"rgba({red},{green},{blue},{alpha})"
+
+
+def heatmap_color(value: float, visuals: dict) -> str:
+    """Color for a correlation in [-1, 1] on the configured diverging scale."""
+    tokens = resolve_theme_tokens(visuals)
+    value = max(-1.0, min(1.0, float(value)))
+    start = tokens["heatmap_mid_color"]
+    end = tokens["heatmap_max_color"] if value >= 0 else tokens["heatmap_min_color"]
+    t = abs(value)
+    a = [int(start.lstrip("#")[i : i + 2], 16) for i in (0, 2, 4)]
+    b = [int(end.lstrip("#")[i : i + 2], 16) for i in (0, 2, 4)]
+    return "#" + "".join(f"{round(x + (y - x) * t):02X}" for x, y in zip(a, b))
+
+
+def streamlit_theme_options(visuals: dict | None = None) -> dict[str, str]:
+    """Streamlit base theme (widgets, dataframes, sliders) matching the CSS tokens."""
+    tokens = resolve_theme_tokens(visuals or {})
     return {
-        "background_start": _text("background_start"),
-        "background_end": _text("background_end"),
-        "panel_border": _text("panel_border"),
-        "accent_cyan": _text("accent_cyan"),
-        "accent_amber": _text("accent_amber"),
-        "success_color": _text("success_color"),
-        "danger_color": _text("danger_color"),
-        "panel_bg_rgba": _text("panel_bg_rgba"),
-        "hover_glow_rgba": _text("hover_glow_rgba"),
-        "hero_font": _text("hero_font"),
-        "ui_font": _text("ui_font"),
-        "mono_font": _text("mono_font"),
-        "text_primary": _text("text_primary"),
-        "text_muted": _text("text_muted"),
-        "heatmap_min_color": _text("heatmap_min_color"),
-        "heatmap_mid_color": _text("heatmap_mid_color"),
-        "heatmap_max_color": _text("heatmap_max_color"),
+        "base": "dark",
+        "primaryColor": tokens["accent"],
+        "backgroundColor": tokens["bg"],
+        "secondaryBackgroundColor": tokens["surface_2"],
+        "textColor": tokens["ink"],
+        "borderColor": "#262C37",
+        "dataframeBorderColor": "#20262F",
+        "dataframeHeaderBackgroundColor": tokens["surface_3"],
+        # Family names only: a "name:url" value here makes Streamlit drop the whole custom theme.
+        # The fonts themselves load through the @import in build_css.
+        "font": f"{tokens['ui_font']}, sans-serif",
+        "codeFont": f"{tokens['mono_font']}, monospace",
+        "baseRadius": "8px",
     }
 
 
-def resolve_visual_float(visuals: dict, key: str, minimum: float, maximum: float) -> float:
-    fallback = float(TERMINAL_VISUAL_DEFAULTS[key])
-    try:
-        candidate = float(visuals.get(key, fallback))
-    except (TypeError, ValueError):
-        candidate = fallback
-    return min(max(candidate, minimum), maximum)
+def streamlit_theme_flags(visuals: dict | None = None) -> list[str]:
+    flags: list[str] = []
+    for key, value in streamlit_theme_options(visuals).items():
+        flags += [f"--theme.{key}", value]
+    return flags
 
 
 def plotly_theme(visuals: dict) -> dict[str, str]:
@@ -67,419 +107,430 @@ def plotly_theme(visuals: dict) -> dict[str, str]:
     return {
         "ui_font": tokens["ui_font"],
         "mono_font": tokens["mono_font"],
-        "text_primary": tokens["text_primary"],
-        "text_muted": tokens["text_muted"],
-        "accent_cyan": tokens["accent_cyan"],
-        "accent_amber": tokens["accent_amber"],
-        "success_color": tokens["success_color"],
-        "danger_color": tokens["danger_color"],
-        "plot_bg": "rgba(7,20,35,0.56)",
-        "x_grid": "rgba(105,142,183,0.20)",
-        "y_grid_soft": "rgba(105,142,183,0.22)",
-        "y_grid_strong": "rgba(115,155,198,0.34)",
-        "axis_zero": "rgba(193,211,236,0.50)",
-        "bar_border": "rgba(193,211,236,0.32)",
-        "annotation_bg": "rgba(4,10,20,0.84)",
-        "annotation_border": "rgba(105,142,183,0.36)",
-        "line_fill": "rgba(53,212,255,0.12)",
-        "amber_fill": "rgba(123,169,255,0.20)",
-        "success_fill": "rgba(34,197,94,0.32)",
-        "danger_fill": "rgba(251,113,133,0.30)",
+        "ink": tokens["ink"],
+        "ink_2": tokens["ink_2"],
+        "ink_3": tokens["ink_3"],
+        "accent": tokens["accent"],
+        "accent_2": tokens["accent_2"],
+        "pos": tokens["pos"],
+        "neg": tokens["neg"],
+        "warn": tokens["warn"],
+        "plot_bg": "rgba(0,0,0,0)",
+        "grid": "rgba(255,255,255,0.06)",
+        "grid_strong": "rgba(255,255,255,0.09)",
+        "zero": "rgba(232,236,242,0.32)",
+        "spike": "rgba(232,236,242,0.35)",
+        "tip_bg": "#12161E",
+        "tip_border": tokens["line_2"],
+        "annotation_bg": hex_to_rgba(tokens["surface_2"], 0.92),
+        "annotation_border": tokens["line_2"],
+        "accent_fill": hex_to_rgba(tokens["accent"], 0.26),
+        "accent_2_fill": hex_to_rgba(tokens["accent_2"], 0.26),
+        "pos_fill": hex_to_rgba(tokens["pos"], 0.34),
+        "neg_fill": hex_to_rgba(tokens["neg"], 0.34),
+        "clear": "rgba(0,0,0,0)",
     }
+
+
+def hoverlabel(visuals: dict) -> dict:
+    theme = plotly_theme(visuals)
+    return {
+        "bgcolor": theme["tip_bg"],
+        "bordercolor": theme["tip_border"],
+        "font": {"family": theme["ui_font"], "size": 12, "color": theme["ink"]},
+        "align": "left",
+        "namelength": -1,
+    }
+
+
+# Selector for every element whose hover plays its emblem animation.
+_HOVER = ':is([class*="st-key-panel_"], .cd-card, .cd-hero):hover'
+
+
+def build_css(visuals: dict) -> str:
+    t = resolve_theme_tokens(visuals)
+    h = _HOVER
+    return f"""
+@import url('{FONT_CSS_URL}');
+
+:root {{
+    --bg: {t["bg"]};
+    --surface: {t["surface"]};
+    --surface-2: {t["surface_2"]};
+    --surface-3: {t["surface_3"]};
+    --line: {t["line"]};
+    --line-2: {t["line_2"]};
+    --ink: {t["ink"]};
+    --ink-2: {t["ink_2"]};
+    --ink-3: {t["ink_3"]};
+    --accent: {t["accent"]};
+    --accent-2: {t["accent_2"]};
+    --pos: {t["pos"]};
+    --neg: {t["neg"]};
+    --warn: {t["warn"]};
+    --font-sans: '{t["ui_font"]}', system-ui, -apple-system, 'Segoe UI', sans-serif;
+    --font-mono: '{t["mono_font"]}', ui-monospace, monospace;
+    --spring: cubic-bezier(0.34, 1.4, 0.64, 1);
+    --ease-out: cubic-bezier(0.22, 1, 0.36, 1);
+    --focus-ring: 0 0 0 2px var(--bg), 0 0 0 4px color-mix(in srgb, var(--accent) 70%, transparent);
+    color-scheme: dark;
+}}
+
+/* ---------- page ---------- */
+html, body, .stApp, [data-testid="stAppViewContainer"] {{
+    background:
+        radial-gradient(1200px 600px at 8% -12%, color-mix(in srgb, var(--accent) 8%, transparent), transparent 60%),
+        radial-gradient(900px 500px at 100% 0%, color-mix(in srgb, var(--accent-2) 6%, transparent), transparent 60%),
+        var(--bg);
+    color: var(--ink);
+    font-family: var(--font-sans);
+    -webkit-font-smoothing: antialiased;
+}}
+[data-testid="stHeader"] {{ background: transparent; }}
+.main .block-container, [data-testid="stMainBlockContainer"] {{
+    max-width: 1560px;
+    padding-top: 1.75rem;
+    padding-bottom: 2.5rem;
+}}
+@media (max-width: 640px) {{
+    .main .block-container, [data-testid="stMainBlockContainer"] {{ padding-left: 16px; padding-right: 16px; }}
+}}
+.stApp p, .stApp li, .stApp label {{ font-family: var(--font-sans); }}
+.tabular, [data-testid="stMetricValue"] {{ font-variant-numeric: tabular-nums; }}
+::-webkit-scrollbar {{ height: 8px; width: 8px; }}
+::-webkit-scrollbar-thumb {{ background: #262B35; border-radius: 8px; }}
+::-webkit-scrollbar-track {{ background: transparent; }}
+
+/* ---------- motion presets ---------- */
+@keyframes cd-fade-up {{
+    from {{ opacity: 0; transform: translateY(14px); }}
+    to {{ opacity: 1; transform: none; }}
+}}
+@keyframes cd-spin {{ to {{ transform: rotate(360deg); }} }}
+
+/* ---------- header ---------- */
+.cd-hero {{
+    display: flex; flex-wrap: wrap; align-items: center; gap: 14px 16px;
+    padding: 0 0 18px 0; margin-bottom: 4px;
+    border-bottom: 1px solid var(--line);
+    animation: cd-fade-up 0.5s var(--ease-out) both;
+}}
+.cd-hero-titles {{ min-width: 0; flex: 1 1 320px; }}
+.stApp .cd-hero-title {{
+    margin: 0; color: var(--ink); font-size: 26px; font-weight: 650; line-height: 1.2; letter-spacing: -0.015em;
+}}
+.stApp p.cd-hero-sub {{ margin: 4px 0 0 0; color: var(--ink-2); font-size: 13px; line-height: 1.5; max-width: 78ch; }}
+.cd-chips {{ display: flex; flex-wrap: wrap; gap: 8px; }}
+.cd-chip {{
+    display: inline-flex; align-items: center; gap: 7px; white-space: nowrap;
+    padding: 4px 11px; border-radius: 999px; font-size: 11.5px; font-weight: 500;
+    color: var(--ink-2); background: var(--surface-2); border: 1px solid var(--line);
+    font-variant-numeric: tabular-nums;
+}}
+.cd-chip b {{ color: var(--ink); font-weight: 600; }}
+.cd-chip-dot {{ width: 6px; height: 6px; border-radius: 50%; background: var(--chip, var(--accent)); }}
+
+/* brand mark: a tile from the live correlation matrix */
+.cd-mark {{ flex: none; width: 44px; height: 44px; }}
+.cd-mark rect {{ transform-box: fill-box; transform-origin: center; }}
+.cd-hero:hover .cd-mark rect {{ animation: cd-mark-ripple 0.75s var(--ease-out) both; animation-delay: calc(var(--d) * 70ms); }}
+@keyframes cd-mark-ripple {{
+    0% {{ transform: scale(1); }}
+    35% {{ transform: scale(0.55); opacity: 0.6; }}
+    70% {{ transform: scale(1.1); opacity: 1; }}
+    100% {{ transform: scale(1); }}
+}}
+
+/* ---------- panel shell ---------- */
+[class*="st-key-panel_"] {{
+    background: color-mix(in srgb, var(--surface) 88%, transparent);
+    border: 1px solid var(--line);
+    border-radius: 16px;
+    padding: 0 20px 20px 20px;
+    box-shadow: inset 0 1px 0 rgba(255,255,255,0.04), 0 20px 40px -24px rgba(0,0,0,0.7);
+    animation: cd-fade-up 0.55s var(--ease-out) both;
+    animation-delay: var(--delay, 0ms);
+    transition: border-color 0.25s ease, box-shadow 0.25s ease;
+}}
+[class*="st-key-panel_"]:hover {{
+    border-color: var(--line-2);
+    box-shadow: inset 0 1px 0 rgba(255,255,255,0.05), 0 26px 48px -24px rgba(0,0,0,0.85);
+}}
+@media (max-width: 640px) {{ [class*="st-key-panel_"] {{ padding: 0 14px 14px 14px; }} }}
+
+/* ---------- adaptive correlation matrix ---------- */
+/* Wide screens: the matrix panel grows past the content width (up to 1900px) for bigger cells. */
+@media (min-width: 1760px) {{
+    .st-key-panel_heatmap {{
+        --hm-width: min(calc(100vw - 120px), 1900px);
+        width: var(--hm-width) !important;
+        max-width: none;
+        margin-left: calc((100% - var(--hm-width)) / 2);
+    }}
+}}
+/* Cell labels sized from the chart's real width: plot area ~ chart width minus ~200px of
+   ticker labels and colorbar, split across --hm-n columns; a 4-character label ("-.13")
+   needs about 2.4 font-sizes of width in the mono face. */
+.st-key-panel_heatmap [data-testid="stPlotlyChart"] {{ container-type: inline-size; }}
+.st-key-panel_heatmap .heatmap-label text {{
+    font-size: clamp(6px, calc((100cqw - 200px) / var(--hm-n, 50) / 2.8), 12px) !important;
+}}
+.cd-panel-head {{
+    display: flex; align-items: center; gap: 12px;
+    margin: 0 -20px 4px -20px; padding: 16px 20px 14px 20px;
+    border-bottom: 1px solid var(--line);
+}}
+.cd-panel-titles {{ min-width: 0; flex: 1; }}
+.cd-panel-title {{ color: var(--ink); font-size: 15px; font-weight: 600; letter-spacing: -0.01em; line-height: 1.3; }}
+.cd-panel-sub {{ color: var(--ink-2); font-size: 12px; line-height: 1.45; margin-top: 2px; }}
+
+/* ---------- emblem badge: a split ring (two legs of a pair) that turns half a lap on hover ---------- */
+.cd-badge {{
+    position: relative; flex: none; width: 40px; height: 40px;
+    display: grid; place-items: center; color: var(--tint);
+}}
+.cd-badge::before {{
+    content: ""; position: absolute; inset: 0; border-radius: 50%;
+    background: conic-gradient(from 20deg, var(--tint) 0 24%, transparent 24% 50%,
+        color-mix(in srgb, var(--tint) 45%, transparent) 50% 74%, transparent 74%);
+    -webkit-mask: radial-gradient(farthest-side, transparent calc(100% - 1.4px), #000 calc(100% - 1.1px));
+    mask: radial-gradient(farthest-side, transparent calc(100% - 1.4px), #000 calc(100% - 1.1px));
+    opacity: 0.7;
+    transition: transform 1s var(--ease-out), opacity 0.3s ease;
+}}
+.cd-badge::after {{
+    content: ""; position: absolute; inset: 3px; border-radius: 50%;
+    background: radial-gradient(circle, color-mix(in srgb, var(--tint) 12%, transparent), transparent 72%);
+    opacity: 0.55; transition: box-shadow 0.35s ease, opacity 0.35s ease;
+}}
+{h} .cd-badge::before {{ transform: rotate(180deg); opacity: 1; }}
+{h} .cd-badge::after {{ opacity: 1; box-shadow: inset 0 0 12px color-mix(in srgb, var(--tint) 28%, transparent); }}
+.cd-emblem {{ position: relative; z-index: 1; overflow: visible; }}
+.cd-emblem * {{ transform-box: fill-box; transform-origin: center; }}
+.cd-emblem .o-left {{ transform-origin: left center; }}
+.cd-emblem .o-right {{ transform-origin: right center; }}
+.cd-emblem .o-bottom {{ transform-origin: center bottom; }}
+.cd-emblem .o-pivot {{ transform-origin: center bottom; }}
+.cd-emblem .draw {{ stroke-dasharray: 1; stroke-dashoffset: 0; }}
+
+/* emblem animations: play once on hover, then settle */
+{h} .e-candles .e-body {{ animation: e-grow 0.6s var(--spring) both; animation-delay: calc(var(--i) * 110ms); }}
+@keyframes e-grow {{ from {{ transform: scaleY(0.2); }} to {{ transform: scaleY(1); }} }}
+
+{h} .e-matrix rect {{ animation: e-ripple 0.7s var(--ease-out) both; animation-delay: calc(var(--d) * 110ms); }}
+@keyframes e-ripple {{
+    0% {{ transform: scale(1); }}
+    40% {{ transform: scale(0.6); opacity: 0.35; }}
+    75% {{ transform: scale(1.15); opacity: 1; }}
+    100% {{ transform: scale(1); }}
+}}
+
+.e-link .e-node, .e-link .e-tie {{ transition: transform 0.5s var(--spring), opacity 0.3s ease; }}
+{h} .e-link.strong .e-node.l {{ transform: translateX(2.6px); }}
+{h} .e-link.strong .e-node.r {{ transform: translateX(-2.6px); }}
+{h} .e-link.strong .e-tie {{ transform: scaleX(0.55); }}
+{h} .e-link.weak .e-node.l {{ transform: translateX(-1.8px); }}
+{h} .e-link.weak .e-node.r {{ transform: translateX(1.8px); }}
+{h} .e-link.weak .e-tie {{ opacity: 0.15; }}
+
+{h} .draw {{ animation: e-draw 0.8s var(--ease-out) both; animation-delay: calc(var(--i, 0) * 150ms); }}
+@keyframes e-draw {{ from {{ stroke-dashoffset: 1; }} to {{ stroke-dashoffset: 0; }} }}
+{h} .e-pop {{ animation: e-pop 0.45s var(--spring) both; animation-delay: 0.65s; }}
+@keyframes e-pop {{ from {{ transform: scale(0); }} to {{ transform: scale(1); }} }}
+
+{h} .e-delta .e-bar {{ animation: e-grow-x 0.55s var(--spring) both; animation-delay: calc(var(--i) * 100ms); }}
+@keyframes e-grow-x {{ from {{ transform: scaleX(0); }} to {{ transform: scaleX(1); }} }}
+
+{h} .e-tether .e-dot {{ animation: e-revert 1.2s cubic-bezier(0.45, 0, 0.3, 1) both; }}
+@keyframes e-revert {{
+    0% {{ transform: translateY(0); }}
+    18% {{ transform: translateY(-6.5px); }}
+    40% {{ transform: translateY(5px); }}
+    60% {{ transform: translateY(-2.8px); }}
+    80% {{ transform: translateY(1.2px); }}
+    100% {{ transform: translateY(0); }}
+}}
+
+{h} .e-ranks .e-bar {{ animation: e-grow-x 0.6s var(--ease-out) both; animation-delay: calc(var(--i) * 90ms); }}
+
+{h} .e-chain .e-node {{ animation: e-pulse 0.5s var(--ease-out) both; animation-delay: calc(var(--i) * 160ms); }}
+@keyframes e-pulse {{ 0% {{ transform: scale(1); }} 45% {{ transform: scale(1.55); }} 100% {{ transform: scale(1); }} }}
+
+.e-braces .e-brace {{ transition: transform 0.45s var(--spring); }}
+{h} .e-braces .e-brace.l {{ transform: translateX(-1.6px); }}
+{h} .e-braces .e-brace.r {{ transform: translateX(1.6px); }}
+{h} .e-braces .e-node {{ animation: e-pulse 0.45s var(--ease-out) both; animation-delay: calc(var(--i) * 120ms + 0.1s); }}
+
+{h} .e-clock .e-hand {{ animation: e-sweep 0.9s var(--ease-out) both; }}
+@keyframes e-sweep {{ from {{ transform: rotate(0deg); }} to {{ transform: rotate(360deg); }} }}
+
+.e-venn .e-ring {{ transition: transform 0.5s var(--spring); }}
+{h} .e-venn .e-ring.l {{ transform: translateX(1.8px); }}
+{h} .e-venn .e-ring.r {{ transform: translateX(-1.8px); }}
+
+.e-gauge .e-needle {{ transform: rotate(-55deg); transition: transform 0.7s var(--spring); }}
+{h} .e-gauge .e-needle {{ transform: rotate(38deg); }}
+
+/* ---------- info cards (status, definitions) ---------- */
+.cd-card {{
+    background: color-mix(in srgb, var(--surface) 88%, transparent);
+    border: 1px solid var(--line); border-radius: 16px;
+    padding: 0 18px 14px 18px; margin-bottom: 0.25rem; min-height: 9.5rem;
+    box-shadow: inset 0 1px 0 rgba(255,255,255,0.04), 0 20px 40px -24px rgba(0,0,0,0.7);
+    animation: cd-fade-up 0.55s var(--ease-out) both;
+    transition: border-color 0.25s ease, transform 0.35s var(--spring);
+}}
+.cd-card:hover {{ border-color: var(--line-2); transform: translateY(-2px); }}
+.cd-card .cd-panel-head {{ margin: 0 -18px 8px -18px; padding: 14px 18px 12px 18px; }}
+[class*="st-key-panel_"] .cd-card {{ background: var(--surface-2); box-shadow: none; animation: none; }}
+.stApp ul.cd-rows, .stApp ul.cd-defs {{ margin: 0; padding: 0; list-style: none; }}
+.stApp li.cd-row {{ margin: 0;
+    display: flex; justify-content: space-between; align-items: baseline; gap: 16px;
+    padding: 5px 0; font-size: 12.5px; border-bottom: 1px dashed var(--line);
+}}
+.stApp li.cd-row:last-child {{ border-bottom: 0; }}
+.cd-row-label {{ color: var(--ink-2); flex: none; }}
+.cd-row-value {{ color: var(--ink); font-weight: 500; text-align: right; font-variant-numeric: tabular-nums; overflow-wrap: anywhere; }}
+
+.stApp .cd-defs li {{ margin: 0; padding: 6px 0; font-size: 12.5px; line-height: 1.5; color: var(--ink-2); border-bottom: 1px dashed var(--line); }}
+.stApp .cd-defs li:last-child {{ border-bottom: 0; }}
+.cd-defs strong {{ color: var(--ink); font-weight: 600; }}
+
+/* ---------- stat tiles ---------- */
+[data-testid="stMetric"] {{
+    background: var(--surface); border: 1px solid var(--line); border-radius: 12px;
+    padding: 14px 16px;
+    box-shadow: inset 0 1px 0 rgba(255,255,255,0.03);
+    animation: cd-fade-up 0.5s var(--ease-out) both;
+    transition: transform 0.35s var(--spring), border-color 0.25s ease, box-shadow 0.25s ease;
+}}
+[data-testid="stMetric"]:hover {{
+    transform: translateY(-2px);
+    border-color: color-mix(in srgb, var(--accent) 35%, transparent);
+    box-shadow: inset 0 1px 0 rgba(255,255,255,0.04), 0 14px 30px -18px color-mix(in srgb, var(--accent) 40%, transparent);
+}}
+[data-testid="stMetricLabel"] p {{ color: var(--ink-2) !important; font-size: 12px !important; font-weight: 500; }}
+[data-testid="stMetricValue"] {{ color: var(--ink) !important; font-family: var(--font-mono) !important; font-size: 24px !important; font-weight: 500; }}
+[data-testid="stMetricValue"] > div {{ white-space: normal !important; overflow: visible !important; text-overflow: clip !important; overflow-wrap: anywhere; }}
+
+/* ---------- tabs: segmented control with a sliding pill ---------- */
+.stTabs [data-baseweb="tab-list"], .stTabs [role="tablist"] {{
+    position: relative; width: fit-content; max-width: 100%; gap: 2px; padding: 4px;
+    background: var(--surface-2); border: 1px solid var(--line); border-radius: 12px;
+}}
+.stTabs [data-baseweb="tab"], .stTabs [role="tab"] {{
+    position: relative; z-index: 1; height: auto; padding: 7px 14px; margin: 0;
+    border-radius: 8px; background: transparent !important; border: 0;
+    color: var(--ink-3) !important; transition: color 0.2s ease;
+}}
+.stTabs [role="tab"] p {{ font-size: 13px; font-weight: 500; }}
+.stTabs [role="tab"]:hover {{ color: var(--ink-2) !important; }}
+.stTabs [aria-selected="true"] {{ color: var(--ink) !important; }}
+.stTabs [role="tab"]:focus-visible {{ outline: none; box-shadow: var(--focus-ring); }}
+.stTabs [data-baseweb="tab-highlight"] {{
+    top: 4px; bottom: auto !important; height: calc(100% - 8px) !important; z-index: 0;
+    border-radius: 8px; background: var(--surface-3) !important;
+    box-shadow: inset 0 0 0 1px rgba(255,255,255,0.08);
+    transition: transform 0.38s var(--spring), width 0.38s var(--spring) !important;
+}}
+.stTabs .react-aria-SelectionIndicator {{
+    border-radius: 8px; background: var(--surface-3) !important; height: 100% !important;
+    transition: translate 0.38s var(--spring), width 0.38s var(--spring);
+}}
+.stTabs [data-baseweb="tab-border"] {{ display: none; }}
+.stTabs [data-baseweb="tab-panel"], .stTabs [role="tabpanel"] {{ padding-top: 18px; }}
+
+/* ---------- radios: segmented control ---------- */
+[data-testid="stRadio"] div[role="radiogroup"] {{
+    display: inline-flex; flex-wrap: wrap; gap: 2px; width: fit-content; max-width: 100%;
+    padding: 4px; background: var(--surface-2); border: 1px solid var(--line); border-radius: 12px;
+}}
+[data-testid="stRadio"] label[data-baseweb="radio"] {{
+    margin: 0; padding: 6px 13px; border-radius: 8px; cursor: pointer;
+    transition: background-color 0.2s ease, box-shadow 0.2s ease, transform 0.15s ease;
+}}
+[data-testid="stRadio"] label[data-baseweb="radio"] > div:first-child {{ display: none; }}
+[data-testid="stRadio"] label[data-baseweb="radio"] p {{ color: var(--ink-3); font-size: 12.5px; font-weight: 500; transition: color 0.2s ease; }}
+[data-testid="stRadio"] label[data-baseweb="radio"]:hover p {{ color: var(--ink-2); }}
+[data-testid="stRadio"] label[data-baseweb="radio"]:has(input:checked) {{
+    background: var(--surface-3); box-shadow: inset 0 0 0 1px rgba(255,255,255,0.08);
+}}
+[data-testid="stRadio"] label[data-baseweb="radio"]:has(input:checked) p {{ color: var(--ink); }}
+[data-testid="stRadio"] label[data-baseweb="radio"]:active {{ transform: scale(0.95); }}
+[data-testid="stRadio"] label[data-baseweb="radio"]:has(input:focus-visible) {{ box-shadow: var(--focus-ring); }}
+
+/* ---------- widgets ---------- */
+[data-testid="stWidgetLabel"] p {{ color: var(--ink-2) !important; font-size: 12px !important; font-weight: 500; }}
+.stCaption, [data-testid="stCaptionContainer"], [data-testid="stCaptionContainer"] p {{
+    color: var(--ink-2) !important; font-size: 12px;
+}}
+div[data-baseweb="select"] > div, div[data-baseweb="base-input"], div[data-baseweb="input"] {{
+    background: var(--surface-2) !important; border-color: var(--line-2) !important; border-radius: 8px !important;
+    transition: border-color 0.2s ease, box-shadow 0.2s ease;
+}}
+div[data-baseweb="select"] > div:hover, div[data-baseweb="input"]:hover {{ border-color: rgba(255,255,255,0.22) !important; }}
+div[data-baseweb="select"] > div:focus-within, div[data-baseweb="input"]:focus-within {{
+    border-color: color-mix(in srgb, var(--accent) 60%, transparent) !important; box-shadow: var(--focus-ring);
+}}
+div[data-baseweb="popover"] ul {{ background: var(--surface-2); }}
+
+.stButton > button, [data-testid="stDownloadButton"] > button, .stForm button {{
+    border-radius: 8px; border: 1px solid var(--line-2); background: var(--surface-2); color: var(--ink);
+    font-weight: 500; cursor: pointer;
+    transition: background-color 0.2s ease, border-color 0.2s ease, transform 0.3s var(--spring), box-shadow 0.2s ease;
+}}
+.stButton > button:hover, [data-testid="stDownloadButton"] > button:hover, .stForm button:hover {{
+    background: var(--surface-3); border-color: rgba(255,255,255,0.2); color: var(--ink); transform: translateY(-1px);
+}}
+.stButton > button:active, [data-testid="stDownloadButton"] > button:active, .stForm button:active {{
+    transform: scale(0.96); transition-duration: 0.1s;
+}}
+.stButton > button[kind="primary"] {{
+    background: color-mix(in srgb, var(--accent) 16%, var(--surface-2));
+    border-color: color-mix(in srgb, var(--accent) 50%, transparent); color: var(--ink);
+}}
+.stButton > button[kind="primary"]:hover {{
+    background: color-mix(in srgb, var(--accent) 24%, var(--surface-2));
+    border-color: color-mix(in srgb, var(--accent) 75%, transparent);
+    box-shadow: 0 10px 24px -14px color-mix(in srgb, var(--accent) 70%, transparent);
+}}
+.stButton > button:focus-visible, [data-testid="stDownloadButton"] > button:focus-visible {{ box-shadow: var(--focus-ring); outline: none; }}
+
+[data-testid="stExpander"] details {{
+    background: color-mix(in srgb, var(--surface) 88%, transparent);
+    border: 1px solid var(--line); border-radius: 12px; transition: border-color 0.25s ease;
+}}
+[data-testid="stExpander"] details:hover {{ border-color: var(--line-2); }}
+[data-testid="stExpander"] summary p {{ color: var(--ink-2); font-size: 13px; font-weight: 500; }}
+[data-testid="stExpander"] summary:hover p {{ color: var(--ink); }}
+
+[data-testid="stDataFrame"] {{ border: 1px solid var(--line); border-radius: 12px; overflow: hidden; }}
+[data-testid="stAlert"] > div {{ border-radius: 12px; }}
+[data-testid="stPlotlyChart"] {{ animation: cd-fade-up 0.6s var(--ease-out) both; animation-delay: 80ms; }}
+
+[data-testid="stSpinnerIcon"] {{
+    width: 22px !important; height: 22px !important; border-radius: 50% !important;
+    border: 2px solid color-mix(in srgb, var(--accent) 22%, transparent) !important;
+    border-top-color: var(--accent) !important; animation: cd-spin 0.8s linear infinite !important;
+}}
+
+/* ---------- footer ---------- */
+.stApp .cd-footer {{
+    margin-top: 28px; padding-top: 16px; border-top: 1px solid var(--line);
+    display: flex; flex-wrap: wrap; gap: 6px 18px; color: var(--ink-3); font-size: 11.5px; line-height: 1.5;
+}}
+.cd-footer b {{ color: var(--ink-2); font-weight: 500; }}
+
+/* ---------- reduced motion: no entrances, no emblem plays, slow spinner ---------- */
+@media (prefers-reduced-motion: reduce) {{
+    *, *::before, *::after {{ animation-duration: 0.01ms !important; animation-delay: 0ms !important; transition-duration: 0.01ms !important; }}
+    [data-testid="stSpinnerIcon"] {{ animation-duration: 2.4s !important; }}
+    [data-testid="stMetric"]:hover, .cd-card:hover {{ transform: none; }}
+}}
+"""
 
 
 def inject_styles(visuals: dict) -> None:
     import streamlit as st
 
-    tokens = resolve_theme_tokens(visuals)
-    st.markdown(
-        f"""
-        <style>
-        @import url('https://fonts.googleapis.com/css2?family=Bebas+Neue&family=JetBrains+Mono:wght@400;500;700&family=Sora:wght@400;500;600;700&display=swap');
-
-        :root {{
-            --bg-start: {tokens["background_start"]};
-            --bg-end: {tokens["background_end"]};
-            --panel-bg: {tokens["panel_bg_rgba"]};
-            --panel-border: {tokens["panel_border"]};
-            --accent-cyan: {tokens["accent_cyan"]};
-            --accent-amber: {tokens["accent_amber"]};
-            --success: {tokens["success_color"]};
-            --danger: {tokens["danger_color"]};
-            --text-primary: {tokens["text_primary"]};
-            --text-muted: {tokens["text_muted"]};
-            --hover-glow: {tokens["hover_glow_rgba"]};
-            --hero-font: '{tokens["hero_font"]}', sans-serif;
-            --ui-font: '{tokens["ui_font"]}', sans-serif;
-            --mono-font: '{tokens["mono_font"]}', monospace;
-            --ease-term: 140ms cubic-bezier(0.18, 0.86, 0.22, 1);
-            --lift-up: translateY(-3px) scale(1.018);
-            --lift-down: translateY(1px) scale(0.985);
-            --focus-ring: 0 0 0 2px rgba(53,212,255,0.52);
-        }}
-
-        html, body, [data-testid="stAppViewContainer"] {{
-            background: linear-gradient(150deg, var(--bg-start) 0%, var(--bg-end) 56%, #030B15 100%);
-        }}
-
-        .stApp {{
-            color: var(--text-primary);
-            font-family: var(--ui-font);
-            background:
-                repeating-linear-gradient(
-                    90deg,
-                    rgba(157,176,201,0.08) 0,
-                    rgba(157,176,201,0.08) 1px,
-                    transparent 1px,
-                    transparent 22px
-                ),
-                repeating-linear-gradient(
-                    0deg,
-                    rgba(157,176,201,0.06) 0,
-                    rgba(157,176,201,0.06) 1px,
-                    transparent 1px,
-                    transparent 22px
-                ),
-                radial-gradient(62rem 62rem at 14% 6%, rgba(123, 169, 255, 0.22), transparent 44%),
-                radial-gradient(45rem 45rem at 92% 2%, rgba(53, 212, 255, 0.16), transparent 42%);
-        }}
-        .stApp:hover {{
-            background:
-                repeating-linear-gradient(
-                    90deg,
-                    rgba(157,176,201,0.13) 0,
-                    rgba(157,176,201,0.13) 1px,
-                    transparent 1px,
-                    transparent 20px
-                ),
-                repeating-linear-gradient(
-                    0deg,
-                    rgba(157,176,201,0.09) 0,
-                    rgba(157,176,201,0.09) 1px,
-                    transparent 1px,
-                    transparent 20px
-                ),
-                radial-gradient(62rem 62rem at 14% 6%, rgba(123, 169, 255, 0.30), transparent 44%),
-                radial-gradient(45rem 45rem at 92% 2%, rgba(53, 212, 255, 0.24), transparent 42%);
-        }}
-
-        .main .block-container {{
-            padding-top: 1.35rem;
-            padding-bottom: 3rem;
-        }}
-
-        h1, h2, h3, h4 {{
-            color: var(--text-primary) !important;
-        }}
-        h1 {{
-            font-family: var(--hero-font);
-            font-size: clamp(2.6rem, 3.2vw, 4rem) !important;
-            letter-spacing: 0.06em;
-            text-transform: uppercase;
-            text-shadow: 0 0 18px rgba(53, 212, 255, 0.10);
-            margin-bottom: 0.25rem;
-        }}
-        h2, h3, h4 {{
-            font-family: var(--ui-font);
-            letter-spacing: 0.01em;
-            font-weight: 600;
-        }}
-
-        .hero-shell {{
-            padding: 0.2rem 0 0.9rem 0;
-            border-bottom: 1px solid rgba(105,142,183,0.28);
-            margin-bottom: 0.25rem;
-        }}
-        .hero-subtitle {{
-            color: var(--text-muted);
-            font-size: 1rem;
-            line-height: 1.55;
-            letter-spacing: 0.02em;
-            max-width: 78ch;
-        }}
-
-        .section-gap {{
-            width: 100%;
-        }}
-        .section-gap-tabs {{
-            height: 1rem;
-        }}
-        .section-gap-block {{
-            height: 1.15rem;
-        }}
-
-        .status-card,
-        .definition-card,
-        [data-testid="stMetric"],
-        [data-testid="stDataFrame"],
-        .stTabs [data-baseweb="tab-list"],
-        .stTabs [role="tablist"] {{
-            border: 1px solid var(--panel-border) !important;
-            border-radius: 16px;
-            background: linear-gradient(180deg, rgba(255,255,255,0.04), rgba(255,255,255,0.01)), var(--panel-bg);
-            box-shadow: 0 12px 34px rgba(3, 7, 14, 0.42), inset 0 1px 0 rgba(255,255,255,0.05);
-            transition: transform var(--ease-term), box-shadow var(--ease-term), border-color var(--ease-term);
-        }}
-        .status-card:hover,
-        .definition-card:hover,
-        [data-testid="stMetric"]:hover {{
-            transform: var(--lift-up);
-            border-color: rgba(53,212,255,0.42) !important;
-            box-shadow: 0 16px 38px rgba(2, 8, 18, 0.58), 0 0 0 1px rgba(53,212,255,0.28), 0 0 26px rgba(53,212,255,0.25);
-        }}
-
-        .status-card {{
-            padding: 1rem 1.1rem;
-            min-height: 10rem;
-        }}
-        .status-card h4,
-        .definition-card h4 {{
-            margin: 0 0 0.45rem 0;
-            font-size: 1.05rem;
-            color: var(--accent-cyan) !important;
-            text-transform: uppercase;
-            letter-spacing: 0.06em;
-            font-family: var(--ui-font);
-        }}
-        .status-card ul,
-        .definition-card ul {{
-            margin: 0;
-            padding-left: 1rem;
-            color: var(--text-primary);
-            line-height: 1.45;
-        }}
-        .definition-card {{
-            padding: 1rem 1.1rem;
-            min-height: 10rem;
-        }}
-
-        /* data-baseweb selectors: Streamlit <= 1.5x; role selectors: React Aria tabs in newer releases. */
-        .stTabs [data-baseweb="tab-list"],
-        .stTabs [role="tablist"] {{
-            gap: 0.65rem;
-            padding: 0.45rem;
-        }}
-        .stTabs [data-baseweb="tab"],
-        .stTabs [role="tab"] {{
-            color: var(--text-muted) !important;
-            background: rgba(255,255,255,0.02);
-            border: 1px solid rgba(105,142,183,0.24);
-            border-radius: 999px;
-            padding: 0.48rem 1rem;
-            font-family: var(--ui-font);
-            font-weight: 600;
-            transition: color 140ms ease, border-color 140ms ease, background 140ms ease;
-        }}
-        .stTabs [data-baseweb="tab"]:hover,
-        .stTabs [role="tab"]:hover {{
-            color: var(--text-primary) !important;
-            border-color: var(--accent-cyan);
-            transform: var(--lift-up);
-            box-shadow: 0 0 0 1px rgba(53,212,255,0.32), 0 10px 24px rgba(0,0,0,0.40), 0 0 18px rgba(53,212,255,0.24);
-        }}
-        .stTabs [aria-selected="true"] {{
-            color: #031221 !important;
-            border-color: var(--accent-cyan);
-            background: linear-gradient(120deg, rgba(53,212,255,0.95), rgba(53,212,255,0.74));
-            box-shadow: 0 10px 20px rgba(53,212,255,0.28), 0 0 18px rgba(53,212,255,0.22);
-        }}
-        .stTabs [data-baseweb="tab-highlight"],
-        .stTabs .react-aria-SelectionIndicator {{
-            background: transparent !important;
-            height: 0 !important;
-        }}
-
-        [data-testid="stMetric"] {{
-            padding: 0.92rem 1rem;
-            backdrop-filter: blur(10px);
-        }}
-        [data-testid="stMetricValue"],
-        [data-testid="stMetricLabel"] {{
-            color: var(--text-primary) !important;
-            font-family: var(--mono-font) !important;
-        }}
-        /* Let long metric values (date windows) wrap instead of truncating with an ellipsis. */
-        [data-testid="stMetricValue"] > div {{
-            white-space: normal !important;
-            overflow: visible !important;
-            text-overflow: clip !important;
-            overflow-wrap: anywhere;
-        }}
-
-        [data-testid="stWidgetLabel"] p,
-        [data-testid="stWidgetLabel"] span,
-        .stSelectbox label,
-        .stSlider label,
-        .stSubheader {{
-            color: var(--text-primary) !important;
-        }}
-        .stCaption,
-        [data-testid="stCaptionContainer"],
-        [data-testid="stCaptionContainer"] p {{
-            color: var(--text-muted) !important;
-        }}
-
-        [data-testid="stRadio"] label,
-        [data-testid="stRadio"] label p,
-        [data-testid="stRadio"] label span,
-        [data-testid="stRadio"] div[role="radiogroup"] label,
-        [data-testid="stRadio"] div[role="radiogroup"] label p,
-        [data-testid="stRadio"] div[role="radiogroup"] label span {{
-            color: var(--text-primary) !important;
-            opacity: 1 !important;
-            transition: color var(--ease-term);
-        }}
-        [data-testid="stRadio"] label:hover span,
-        [data-testid="stRadio"] label:hover p {{
-            color: var(--accent-cyan) !important;
-        }}
-
-        div[data-baseweb="select"] > div,
-        div[data-baseweb="base-input"] > div,
-        div[data-baseweb="input"] > div {{
-            background: rgba(5, 12, 24, 0.88);
-            border: 1px solid rgba(105,142,183,0.30);
-            border-radius: 12px;
-            transition: border-color 140ms ease, box-shadow 140ms ease;
-        }}
-        div[data-baseweb="select"] > div:hover,
-        div[data-baseweb="base-input"] > div:hover,
-        div[data-baseweb="input"] > div:hover {{
-            transform: var(--lift-up);
-            border-color: var(--accent-cyan);
-            box-shadow: 0 0 0 1px rgba(53,212,255,0.30), 0 10px 28px rgba(0,0,0,0.58), 0 0 18px rgba(53,212,255,0.20);
-        }}
-        div[data-baseweb="select"] * {{
-            color: var(--text-primary) !important;
-        }}
-        div[data-baseweb="select"] svg {{
-            fill: var(--text-primary) !important;
-        }}
-        div[data-baseweb="slider"] * {{
-            color: var(--text-primary) !important;
-        }}
-
-        .stButton > button,
-        [data-testid="stDownloadButton"] > button,
-        [data-testid="baseButton-secondary"],
-        [data-testid="baseButton-primary"],
-        button[kind="secondary"],
-        button[kind="primary"],
-        .stForm button {{
-            border-radius: 12px !important;
-            border: 1px solid rgba(105,142,183,0.36) !important;
-            background: linear-gradient(120deg, rgba(123,169,255,0.24), rgba(53,212,255,0.12)), rgba(7,16,30,0.95) !important;
-            color: var(--text-primary) !important;
-            font-family: var(--ui-font) !important;
-            font-weight: 600 !important;
-            letter-spacing: 0.01em;
-            transition: box-shadow 140ms ease, border-color 140ms ease, filter 140ms ease;
-            cursor: pointer !important;
-        }}
-
-        .stButton > button:hover,
-        [data-testid="stDownloadButton"] > button:hover,
-        [data-testid="baseButton-secondary"]:hover,
-        [data-testid="baseButton-primary"]:hover,
-        button[kind="secondary"]:hover,
-        button[kind="primary"]:hover,
-        .stForm button:hover {{
-            transform: var(--lift-up);
-            border-color: var(--accent-cyan) !important;
-            box-shadow: 0 0 0 1px rgba(53,212,255,0.40), 0 12px 26px rgba(0,0,0,0.52), 0 0 24px var(--hover-glow);
-            filter: brightness(1.11);
-        }}
-        .stButton > button:active,
-        [data-testid="stDownloadButton"] > button:active,
-        [data-testid="baseButton-secondary"]:active,
-        [data-testid="baseButton-primary"]:active,
-        button[kind="secondary"]:active,
-        button[kind="primary"]:active,
-        .stForm button:active {{
-            transform: var(--lift-down);
-            box-shadow: 0 5px 12px rgba(0,0,0,0.48), 0 0 14px rgba(53,212,255,0.26);
-        }}
-        .stButton > button:focus-visible,
-        [data-testid="stDownloadButton"] > button:focus-visible,
-        .stForm button:focus-visible,
-        div[data-baseweb="select"] > div:focus-within,
-        div[data-baseweb="base-input"] > div:focus-within,
-        div[data-baseweb="input"] > div:focus-within {{
-            box-shadow: var(--focus-ring) !important;
-            border-color: var(--accent-cyan) !important;
-        }}
-
-        .stDataFrame {{
-            overflow: hidden;
-        }}
-        div[data-testid="stDataFrame"] [role="columnheader"],
-        div[data-testid="stDataFrame"] [role="gridcell"] {{
-            padding-left: 1rem !important;
-            padding-right: 1rem !important;
-            color: var(--text-primary) !important;
-            font-family: var(--mono-font) !important;
-            font-size: 0.88rem !important;
-        }}
-        div[data-testid="stDataFrame"] [role="columnheader"] {{
-            color: var(--accent-cyan) !important;
-            text-transform: uppercase;
-            letter-spacing: 0.04em;
-        }}
-
-        [data-testid="stSpinner"] {{
-            color: var(--text-primary) !important;
-            text-shadow: 0 0 10px rgba(53,212,255,0.24);
-        }}
-        [data-testid="stSpinnerIcon"] {{
-            position: relative;
-            /* Ring only on the icon, so spinner text never sits inside it. */
-            width: 32px !important;
-            height: 32px !important;
-            flex: 0 0 auto;
-            border-radius: 50% !important;
-            border: 2px solid rgba(53,212,255,0.24) !important;
-            border-top-color: var(--accent-cyan) !important;
-            border-right-color: rgba(53,212,255,0.50) !important;
-            animation: sci-spin 0.72s linear infinite !important;
-            box-shadow: 0 0 24px rgba(53,212,255,0.22), inset 0 0 16px rgba(53,212,255,0.18);
-            background: radial-gradient(circle at center, rgba(53,212,255,0.10), transparent 64%);
-        }}
-        [data-testid="stSpinnerIcon"]::before {{
-            content: "";
-            position: absolute;
-            inset: 5px;
-            border-radius: 50%;
-            border: 2px solid transparent;
-            border-left-color: rgba(123,169,255,0.70);
-            border-bottom-color: rgba(123,169,255,0.42);
-            animation: sci-spin-rev 0.56s linear infinite;
-        }}
-        @keyframes sci-spin {{
-            from {{ transform: rotate(0deg); }}
-            to {{ transform: rotate(360deg); }}
-        }}
-        @keyframes sci-spin-rev {{
-            from {{ transform: rotate(360deg); }}
-            to {{ transform: rotate(0deg); }}
-        }}
-        @media (prefers-reduced-motion: reduce) {{
-            .status-card:hover,
-            .definition-card:hover,
-            [data-testid="stMetric"]:hover,
-            .stTabs [data-baseweb="tab"]:hover,
-            .stTabs [role="tab"]:hover,
-            .stForm button:hover,
-            div[data-baseweb="select"] > div:hover,
-            div[data-baseweb="base-input"] > div:hover,
-            div[data-baseweb="input"] > div:hover {{
-                transform: none;
-            }}
-            [data-testid="stSpinnerIcon"],
-            [data-testid="stSpinnerIcon"]::before {{
-                animation-duration: 2.2s !important;
-            }}
-        }}
-        </style>
-        """,
-        unsafe_allow_html=True,
-    )
+    st.html(f"<style>{build_css(visuals)}</style>")

@@ -37,21 +37,21 @@
 
 ## Visual Identity
 
-Values below are the defaults in `theme.py` (`TERMINAL_VISUAL_DEFAULTS`); `config/dashboard_config.json` → `visuals` overrides them at runtime.
+Values below are the defaults in `theme.py` (`VISUAL_DEFAULTS`); `config/dashboard_config.json` → `visuals` overrides them at runtime. The system follows the shared dashboard design guide (tokens, panel shell, emblems, motion); this dashboard's own identity is the cyan accent, the correlation-tile brand mark and its panel emblems.
 
 | Element | Value |
 |---------|-------|
 | Heatmap min color (-1) | `#7D3A4A` (muted red) |
 | Heatmap mid color (0) | `#DCE7F6` (pale neutral) |
 | Heatmap max color (+1) | `#1C8BC4` (blue) |
-| Background gradient | `#071222` → `#152B47` → `#030B15` (150°) |
-| Panel background | `rgba(10, 22, 40, 0.78)` |
-| Panel border | `rgba(122,157,205,0.34)` |
-| Accents | cyan `#58C8FF`, secondary `#7BA9FF`, success `#22C55E`, danger `#FB7185` |
-| Hero / heading font | Bebas Neue |
-| UI / body font | Sora |
-| Mono font (charts, tables) | JetBrains Mono |
-| Text color | `#EAF2FF` primary, `#A4B8D7` muted |
+| Surfaces | bg `#0A0D12`, surface `#0E1218`, surface-2 `#141922`, surface-3 `#1B212C`, plus two faint radial glows (accent, accent-2) |
+| Lines | `rgba(255,255,255,0.07)` and `rgba(255,255,255,0.12)` |
+| Text | ink `#E8ECF2`, ink-2 `#9AA3B2` (captions), ink-3 `#7A8394` |
+| Signal | accent `#58C8FF`, accent-2 `#7BA9FF`, pos `#22C55E`, neg `#FB7185`, warn `#E9B949` |
+| UI / heading font | Inter |
+| Mono font (figures, ticks) | JetBrains Mono |
+| Radius | 8px controls, 12px tiles and tables, 16px panels |
+| Motion | panels fade up on entry; emblems play once on hover and settle; springy segmented tabs and radios; all stopped under reduced motion |
 | Header fill (Excel) | `#10243E` with white bold text |
 
 These values must never be changed without explicit user approval.
@@ -65,6 +65,7 @@ README.md / CONTRIBUTING.md / LICENSE (MIT)
 .github/workflows/tests.yml        ← CI: offline tests on ubuntu + windows, Python 3.11/3.12
 pyproject.toml                     ← Package metadata (src layout) + corrdash-* console scripts; requirements.txt mirrors deps
 config/dashboard_config.json       ← Single source of truth for all settings
+.streamlit/config.toml            ← Streamlit base theme for direct `streamlit run` (kept equal to theme.py by a test)
 
 src/nasdaq_correlation_dashboard/
   settings.py                      ← DashboardConfig dataclass + load_config, project_root, default_config_path
@@ -75,7 +76,8 @@ src/nasdaq_correlation_dashboard/
   pairs_cointegration.py           ← Engle-Granger cointegration analysis, spread z-scores, pairs workbook
   excel_export.py                  ← openpyxl workbook export with conditional formatting
   cli.py                           ← Shared history-period resolver for the pipeline scripts
-  theme.py                         ← Theme tokens, Plotly palette, injected Streamlit CSS
+  theme.py                         ← Theme tokens, Plotly palette, Streamlit base theme, injected CSS
+  emblems.py                       ← Hand-built panel emblems (hover animations), panel header, brand mark
   dashboard.py                     ← Streamlit multi-tab GUI (Heatmap, Rolling, Cointegration, Universe, Run Status)
   net.py                           ← configure_tls(): HTTPS behind proxies/antivirus (DASHBOARD_CA_BUNDLE, Windows store bundle)
   rerun_job.py                     ← Background re-run job for the dashboard (lock + status file + log)

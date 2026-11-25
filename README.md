@@ -1,9 +1,10 @@
-# NASDAQ-100 Correlation Dashboard
+# Correlation Analysis Dashboard (for ETF constituents)
 
-Research dashboard for the correlation structure of the **top 50 NASDAQ-100 stocks**, or of **any
-ETF's holdings**. It pulls daily prices, computes returns and the full correlation matrix locally,
-tests every pair for Engle-Granger cointegration, and shows it all in a Streamlit app plus two
-Excel workbooks. Every artifact records where its data came from.
+Research dashboard for the correlation structure of an **ETF's constituents**: out of the box the
+**top 50 NASDAQ-100 stocks** (the QQQ/QQQM basket), or the top holdings of **any ETF** from its
+issuer's holdings export. It pulls daily prices, computes returns and the full correlation matrix
+locally, tests every pair for Engle-Granger cointegration, and shows it all in a Streamlit app plus
+two Excel workbooks. Every artifact records where its data came from.
 
 ![Dashboard overview](docs/images/overview.jpg)
 
@@ -23,6 +24,10 @@ Excel workbooks. Every artifact records where its data came from.
   are tested but not qualified, because the test is not valid for them.
 - **ETF mode:** the same analysis on the top 50 holdings by fund weight of any ETF (e.g. `TAN`), from the issuer's holdings export. Funds with fewer holdings use them all; `--top-n` changes the count.
 - **Outputs:** CSV/JSON artifacts in `data/processed/` and Excel workbooks in `exports/`.
+- **Interface:** a dark, token-based theme (Inter and JetBrains Mono) with one panel per question,
+  hover tooltips and crosshairs on every chart, and small animated panel emblems. The correlation
+  matrix adapts to the screen: wider on large monitors, with cell labels sized to fit. Animations
+  switch off when the system asks for reduced motion.
 
 ![Correlation heatmap](docs/images/heatmap.jpg)
 ![Cointegration tab](docs/images/cointegration.jpg)

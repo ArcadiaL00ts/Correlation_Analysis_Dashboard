@@ -140,7 +140,7 @@ exports/                           ← Generated Excel workbooks
 11. **Record new failure modes** and durable fixes in `codex.md`.
 12. **Keep the cointegration tab grounded in generated artifacts**, not workbook parsing or direct fetches.
 13. **Show threshold definitions** in plain English on the cointegration tab.
-14. **Commit as ArcadiaL00ts with the noreply email**; never use a personal name or email in this repo.
+14. **Commit as ArcadiaL00ts with the noreply email**, in UTC (`TZ=UTC`); never use a personal name or email in this repo, and add no `Co-Authored-By` trailers.
 
 ## Multi-Agent Dispatch Rules
 
